@@ -161,6 +161,7 @@ class SwarmRunner(object):
   def __init__(self, index, tpu_name, iterations, train_steps, eval_steps):
     tf.logging.info("SwarmRunner: constructor")
     self.index = index
+    self.tpu_name = tpu_name
     self.feature_structure = {}
     self.eval_feature_structure = {}
     self.loss = None
@@ -520,7 +521,7 @@ class SwarmRunner(object):
   def train_and_eval(self, output_summaries=False, enable_tracing=True):
     """Run the Train steps on the TPU device."""
     if output_summaries:
-      output_dir = os.path.join(FLAGS.model_dir, "eval")
+      output_dir = os.path.join(FLAGS.model_dir, "eval", self.tpu_name)
       tf.gfile.MakeDirs(output_dir)
       # Summary writer writes out eval metrics.
       summary_writer = tf.summary.FileWriter(output_dir)
@@ -585,12 +586,12 @@ class SwarmRunner(object):
       if eval_results["top_1_accuracy"] >= FLAGS.stop_threshold:
         success = True
         if FLAGS.export_dir is not None:
-          def checkpoint_thread_fn(saver, sess, step):
-            name = FLAGS.model_dir + "/model.ckpt-%d" % (step)
+          def checkpoint_thread_fn(tpu_name, saver, sess, step):
+            name = FLAGS.export_dir + "/model-%s.ckpt-%d" % (tpu_name, step)
             tf.logging.info("Saving model %d: %s", step, name)
             saver.save(sess, name)
           self.checkpoint_thread = threading.Thread(
-            target=checkpoint_thread_fn, args=(self.saver, self.sess, self.cur_step))
+            target=checkpoint_thread_fn, args=(self.tpu_name, self.saver, self.sess, self.cur_step))
           self.checkpoint_thread.start()
         mlp_log.mlperf_print("run_stop", None, metadata={"status": "success"})
         break
