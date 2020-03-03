@@ -582,7 +582,7 @@ class SwarmRunner(object):
 
     self.cur_step = 0
     success = False
-    while self.cur_step < self.train_steps:
+    while self.cur_step < self.train_steps or True:
       start = time.time()
       tf.logging.info("TrainAndEvalRunner: start next %d steps",
                       self.iterations)
