@@ -386,14 +386,16 @@ class SwarmRunner(object):
       is_training: boolean indicates if it is training
     """
 
+    num_shards = len(self.coordinator.shards)
+    index = self.index
     iparams = {}
     iparams["batch_size"] = params["batch_size"] // self.num_cores
-    iparams["dataset_num_shards"] = self.num_hosts
+    iparams["dataset_num_shards"] = self.num_hosts * num_shards
 
     def get_enqueue_ops_fn():
       """Generate the enqueue ops graph function."""
 
-      iparams["dataset_index"] = host_id
+      iparams["dataset_index"] = num_shards * index + host_id
       with tf.device(device_for_host(self.get_host(host_id))):
         dataset = input_fn(iparams)
         if not is_training:
