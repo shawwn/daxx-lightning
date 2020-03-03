@@ -401,7 +401,7 @@ def resnet_model_fn(features, labels, mode, params):
        if 'batch_normalization' not in v.name])
   # Compute the current epoch and associated learning rate from global_step.
   global_step = tf.train.get_or_create_global_step()
-  steps_per_epoch = FLAGS.num_train_images / FLAGS.train_batch_size
+  steps_per_epoch = tf.constant(FLAGS.num_train_images / FLAGS.train_batch_size, dtype=tf.float32)
   current_epoch = (tf.cast(global_step, tf.float32) /
                    steps_per_epoch)
 
