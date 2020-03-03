@@ -16,8 +16,9 @@ TPU_INDEX="${TPU_INDEX:-0}"
 tpu="${TPU_NAME:-tpu-v3-${TPU_CORES}-euw4a-${TPU_INDEX}}"
 
 data_dir="gs://danbooru-euw4a/imagenet/out"
-model_dir="gs://danbooru-euw4a/mlperf/benchmarks/imagenet/tf-1-14-1-dev20190518/v3-${TPU_CORES}/results-${i}"
-export_dir="gs://danbooru-euw4a/mlperf/benchmarks/imagenet/tf-1-14-1-dev20190518/v3-${TPU_CORES}/results-${i}"
+model_dir="gs://danbooru-euw4a/benchmarks/daxx/imagenet/tf-1-15/v3-${TPU_CORES}/results-${i}"
+export_dir="gs://danbooru-euw4a/benchmarks/daxx/imagenet/tf-1-15/v3-${TPU_CORES}/results-${i}"
+save_graphs=True
 
 export NOISY=1
 export DEBUG=1
@@ -34,6 +35,7 @@ export DEBUG=1
 #--mode=in_memory_eval \
 #--model_dir="$model_dir" \
 #--export_dir="$export_dir" \
+#--save_graphs="$save_graphs" \
 #--num_cores="${TPU_CORES}" \
 #--num_prefetch_threads=16 \
 #--prefetch_depth_auto_tune=True \
@@ -85,6 +87,7 @@ exec python3 resnet_main.py --data_dir="$data_dir" \
 --mode=in_memory_eval \
 --model_dir="$model_dir" \
 --export_dir="$export_dir" \
+--save_graphs="$save_graphs" \
 --num_cores="${TPU_CORES}" \
 --num_prefetch_threads=16 \
 --prefetch_depth_auto_tune=True \

@@ -438,6 +438,11 @@ class TrainAndEvalRunner(object):
       tf.gfile.MakeDirs(output_dir)
       # Summary writer writes out eval metrics.
       summary_writer = tf.summary.FileWriter(output_dir)
+      if FLAGS.save_graphs:
+        summary_writer.add_graph(self.graph)
+        summary_writer.add_graph(self.input_graph)
+        summary_writer.add_graph(self.eval_input_graph)
+        summary_writer.add_graph(self.eval_output_graph)
 
     def infeed_thread_fn():
       """Build and infeed session.run calls in a background thread."""

@@ -209,6 +209,10 @@ flags.DEFINE_string(
     default=None,
     help=('The directory where the exported SavedModel will be stored.'))
 
+flags.DEFINE_bool(
+    'save_graphs', default=False,
+    help='Save the computation graphs when writing tensorboard logs?')
+
 flags.DEFINE_string(
     'precision', default='bfloat16',
     help=('Precision to use; one of: {bfloat16, float32}'))
