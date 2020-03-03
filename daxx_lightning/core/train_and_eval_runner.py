@@ -127,6 +127,117 @@ def dispatch(xs, thunk, *args, **kws):
       pbar.update(1)
     return results
 
+def dispatch_sync(xs, thunk, *args, **kws):
+  n = len(xs)
+  results = [None] * n
+  for i in tqdm.trange(n):
+    results[i] = thunk(i, *args, **kws)
+  return results
+
+class VariableAccumulator(object):
+  pass
+
+from collections import defaultdict
+import numpy as np
+
+def variable_accumulator_new():
+  self = VariableAccumulator()
+  self.accum = {}
+  self.accumcount = defaultdict(int)
+  self.lock = threading.Lock()
+  return self
+
+tflex.variable_accumulator_new = variable_accumulator_new
+
+def variable_accumulator_add(self, variable, value):
+  if np.isnan(value).any():
+    return False
+  if np.isinf(value).any():
+    return False
+  if variable.name in self.accum:
+    self.accum[variable.name] = self.accum[variable.name] + value
+  else:
+    self.accum[variable.name] = value
+  self.accumcount[variable.name] += 1
+  return True
+
+tflex.variable_accumulator_add = variable_accumulator_add
+
+from tensorflow.core.protobuf import config_pb2
+tflex.read_deadline = 20000
+tflex.write_deadline = 20000
+tflex.reset_deadline = 20000
+
+def trainer_slice_read(trainer, accumulator, variables):
+  values = trainer.sess.run(tflex.cast_variables(variables, graph=trainer.sess.graph), options=config_pb2.RunOptions(timeout_in_ms=tflex.read_deadline))
+  with accumulator.lock:
+    for variable, value in zip(variables, values):
+      tflex.variable_accumulator_add(accumulator, variable, value)
+
+tflex.trainer_slice_read = trainer_slice_read
+
+def trainer_assign_values(self, variables, values, timeout_in_ms=tflex.write_deadline):
+  tflex.assign_values(variables, values, session=self.sess, timeout_in_ms=timeout_in_ms)
+  #tflex.trainer_reset_variables(self, variables, timeout_in_ms=tflex.write_deadline)
+
+tflex.trainer_assign_values = trainer_assign_values
+
+def trainer_slice_write(trainer, accumulator, variables):
+  values = []
+  for variable in variables:
+    with accumulator.lock:
+      assert(variable.name in accumulator.accum)
+      value = accumulator.accum[variable.name]
+      n = accumulator.accumcount[variable.name]
+    assert(n > 0)
+    values.append(value / n)
+  tflex.trainer_assign_values(trainer, variables, values)
+
+tflex.trainer_slice_write = trainer_slice_write
+
+
+tflex.update_trainers_read_timeout = 60
+tflex.update_trainers_write_timeout = 60
+tflex.update_trainers_write_threads = []
+
+def update_trainers(trainers, i, sync_all=False):
+  trainers = [x for x in trainers]
+  if len(trainers) <= 0:
+    return
+  accumulator = tflex.variable_accumulator_new()
+  threads = []
+  for trainer in trainers:
+    if tflex.trainer_fresh(trainer):
+      continue
+    def thunk(trainer, accumulator, index):
+      for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
+        tflex.trainer_slice_read(trainer, accumulator, variables)
+    thread = threading.Thread(target=thunk, args=(trainer,accumulator,i,))
+    thread.start()
+    threads.append(thread)
+  start_time = time.time()
+  for thread in threads:
+    elapsed = (time.time() - start_time)
+    waiting = tflex.update_trainers_read_timeout - elapsed
+    if waiting > 0:
+      thread.join(timeout=waiting)
+  start_time = time.time()
+  for thread in tflex.update_trainers_write_threads:
+    elapsed = (time.time() - start_time)
+    waiting = tflex.update_trainers_write_timeout - elapsed
+    if waiting > 0:
+      thread.join(timeout=waiting)
+  tflex.update_trainers_write_threads = []
+  for trainer in trainers:
+    def thunk(trainer, accumulator, index):
+      for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
+        tflex.trainer_slice_write(trainer, accumulator, variables)
+    thread = threading.Thread(target=thunk, args=(trainer,accumulator,i,))
+    thread.start()
+    tflex.update_trainers_write_threads.append(thread)
+
+tflex.update_trainers = update_trainers
+
 import json
 
 class TrainAndEvalRunner(object):
@@ -162,7 +273,20 @@ class TrainAndEvalRunner(object):
   def train_and_eval(self, output_summaries=False, enable_tracing=True):
     """Run the Train steps on the TPU device."""
     tf.logging.info("TrainAndEvalRunner: train_and_eval()...")
-    dispatch(self.tpus, lambda i: self.shards[i].train_and_eval(output_summaries=output_summaries, enable_tracing=enable_tracing))
+    threads = tflex.parallelize(list(range(len(self.tpus))),
+                                lambda i: self.shards[i].train_and_eval(
+                                  output_summaries=output_summaries,
+                                  enable_tracing=enable_tracing))
+    for i, thread in enumerate(threads):
+      self.shards[i].thread = thread
+    while True:
+      time.sleep(1.0)
+      trainers = [x for x in self.shards if x.thread.is_alive()]
+      if len(trainers) <= 0:
+        break
+      n = len(trainers[0].fetch_vars)
+      for j in tqdm.trange(n):
+        tflex.update_trainers(trainers, j)
 
   def shutdown(self):
     tf.logging.info("TrainAndEvalRunner: shutdown()...")
