@@ -141,6 +141,7 @@ class TrainAndEvalRunner(object):
         project=FLAGS.gcp_project)
     self.config = tf.ConfigProto(
         operation_timeout_in_ms=600 * 60 * 1000,
+        cluster=self.tpu_cluster_resolver,
         allow_soft_placement=True,
         graph_options=tf.GraphOptions(
             rewrite_options=rewriter_config_pb2.RewriterConfig(
