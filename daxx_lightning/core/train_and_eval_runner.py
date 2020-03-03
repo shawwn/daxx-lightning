@@ -125,12 +125,14 @@ class TrainAndEvalRunner(object):
     self.input_sess = None
     self.eval_input_sess = None
     self.eval_output_sess = None
+    self.log_sess = None
     self.infeed_thread = None
     self.train_eval_thread = None
     self.graph = tf.Graph()
     self.input_graph = tf.Graph()
     self.eval_input_graph = tf.Graph()
     self.eval_output_graph = tf.Graph()
+    self.log_graph = tf.Graph()
     if train_steps % iterations != 0:
       train_steps = iterations * int(math.ceil(train_steps / iterations))
     self.train_steps = train_steps
@@ -304,11 +306,12 @@ class TrainAndEvalRunner(object):
 
     # Start the build of the model
     tpu_step = self.get_tpu_step(params, model_fn)
+    self.log_step = None
     self.log_ops = None
     if logger_fn:
-      with self.graph.as_default():
-        global_step = tf.train.get_or_create_global_step()
-        self.log_ops = logger_fn(global_step)
+      with self.log_graph.as_default():
+        self.log_step = tf.placeholder(tf.int64, [])
+        self.log_ops = logger_fn(self.log_step)
 
     @tpu_function.on_device_training_loop
     def train_loop():
@@ -340,6 +343,9 @@ class TrainAndEvalRunner(object):
 
     self.eval_output_sess = tflex.Session(
         self.master, graph=self.eval_output_graph, config=self.config)
+
+    self.log_sess = tflex.Session(
+      self.master, graph=self.log_graph, config=self.config)
 
     with self.graph.as_default():
       self.sess.run(tf.global_variables_initializer())
@@ -465,14 +471,14 @@ class TrainAndEvalRunner(object):
     if enable_tracing:
       self.launch_profiler()
 
-    cur_step = 0
+    self.cur_step = 0
     success = False
-    while cur_step < self.train_steps:
+    while self.cur_step < self.train_steps:
       start = time.time()
       tf.logging.info("TrainAndEvalRunner: start next %d steps",
                       self.iterations)
-      cur_step += self.iterations
-      epoch = cur_step // self.steps_per_epoch - 1
+      self.cur_step += self.iterations
+      epoch = self.cur_step // self.steps_per_epoch - 1
       mlp_log.mlperf_print(
           "block_start", None, metadata={"first_epoch_num": epoch + 1,
                                          "epoch_count": 4})
@@ -480,7 +486,7 @@ class TrainAndEvalRunner(object):
       end = time.time()
       tf.logging.info(
           "TrainAndEvalRunner: step {} step time {} sec {} examples/sec".format(
-              cur_step, end - start,
+              self.cur_step, end - start,
               self.iterations * FLAGS.train_batch_size / (end - start)))
       # Run eval.
       # Write out summary to tensorboard.
@@ -491,7 +497,7 @@ class TrainAndEvalRunner(object):
             summaries.append(
                 tf.Summary.Value(tag=metric, simple_value=eval_results[metric]))
             tf_summary = tf.Summary(value=list(summaries))
-            summary_writer.add_summary(tf_summary, cur_step)
+            summary_writer.add_summary(tf_summary, self.cur_step)
       # MLPerf logging for eval results.
       mlp_log.mlperf_print(
           "eval_accuracy",
@@ -500,7 +506,7 @@ class TrainAndEvalRunner(object):
 
       mlp_log.mlperf_print(
           "block_stop", None, metadata={"first_epoch_num": epoch + 1})
-      tf.logging.info("Eval results at step %d: %s", cur_step, eval_results)
+      tf.logging.info("Eval results at step %d: %s", self.cur_step, eval_results)
       if eval_results["top_1_accuracy"] >= FLAGS.stop_threshold:
         success = True
         if FLAGS.export_dir is not None:
@@ -509,12 +515,12 @@ class TrainAndEvalRunner(object):
             tf.logging.info("Saving model %d: %s", step, name)
             saver.save(sess, name)
           self.checkpoint_thread = threading.Thread(
-            target=checkpoint_thread_fn, args=(self.saver, self.sess, cur_step))
+            target=checkpoint_thread_fn, args=(self.saver, self.sess, self.cur_step))
           self.checkpoint_thread.start()
         mlp_log.mlperf_print("run_stop", None, metadata={"status": "success"})
         break
 
-      if enable_tracing and cur_step > self.train_steps // 4:
+      if enable_tracing and self.cur_step > self.train_steps // 4:
         self.launch_profiler()
         enable_tracing = False
 
@@ -548,7 +554,7 @@ class TrainAndEvalRunner(object):
     session_out = self.eval_output_sess.run(self.metric_value_ops)
     for k, v in session_out.items():
       eval_results[k] = v
-    session_out = self.sess.run(self.log_ops)
+    session_out = self.log_sess.run(self.log_ops, {self.log_step: self.cur_step})
     for k, v in session_out.items():
       eval_results[k] = v
 
