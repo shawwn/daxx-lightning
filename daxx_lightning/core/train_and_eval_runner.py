@@ -374,6 +374,9 @@ class TrainAndEvalRunner(object):
       self.train_vars = tf.trainable_variables()
       self.fetch_vars = list(tflex.split_by_params(self.train_vars))
       self.saver = tf.train.Saver()
+      for i in tqdm.trange(len(self.fetch_vars)):
+        for variables in self.variables(i):
+          self.sess.run(variables)
 
     with self.log_graph.as_default():
       self.log_sess.run(self.log_initializer)
