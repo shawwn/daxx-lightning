@@ -562,7 +562,13 @@ class TrainAndEvalRunner(object):
       eval_results[k] = v
     self.log_sess.run(self.log_step_init, {self.log_step_in: self.cur_step})
     if self.log_ops:
-      session_out = self.log_sess.run(self.log_ops)
+      log_ops = {}
+      for k, v in self.log_ops.items():
+        if isinstance(v, int) or isinstance(v, float):
+          eval_results[k] = v
+        else:
+          log_ops[k] = v
+      session_out = self.log_sess.run(log_ops)
       for k, v in session_out.items():
         eval_results[k] = v
 
