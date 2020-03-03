@@ -337,9 +337,6 @@ class TrainAndEvalRunner(object):
     with self.graph.as_default():
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
-      self.saver = None
-      if FLAGS.export_dir is not None:
-        self.saver = tf.train.Saver()
 
     def train_eval_thread_fn(sess, train_eval_op):
       sess.run([train_eval_op])
@@ -504,16 +501,15 @@ class TrainAndEvalRunner(object):
       mlp_log.mlperf_print("run_stop", None, metadata={"status": "abort"})
 
     mlp_log.mlperf_print("run_final", None)
+
+    if FLAGS.export_dir is not None:
+      tf.logging.info("Saving model %d: %s", cur_step, FLAGS.export_dir + "/model.ckpt-%d" % (cur_step))
+      with self.graph.as_default():
+        saver = tf.train.Saver()
+        saver.save(self.sess, FLAGS.export_dir + "/model.ckpt-%d" % (cur_step))
+
     if output_summaries:
       summary_writer.close()
-    if self.saver:
-      tf.logging.info("Saving model %d: %s", cur_step, FLAGS.export_dir + "/model.ckpt-%d" % (cur_step))
-      def checkpoint_thread_fn(saver, sess):
-        saver.save(sess, FLAGS.export_dir + "/model.ckpt-%d" % (cur_step))
-      checkpoint_thread = threading.Thread(
-          target=checkpoint_thread_fn, args=(self.saver, self.sess))
-      checkpoint_thread.start()
-      checkpoint_thread.join()
 
   def eval(self, num_steps):
     """Run the Eval steps on the TPU device.
