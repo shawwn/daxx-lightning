@@ -201,6 +201,7 @@ class SwarmRunner(object):
     self.infeed_thread = None
     self.train_eval_thread = None
     self.graph = tf.Graph()
+    self.init_graph = tf.Graph()
     self.input_graph = tf.Graph()
     self.eval_input_graph = tf.Graph()
     self.eval_output_graph = tf.Graph()
@@ -211,7 +212,8 @@ class SwarmRunner(object):
     self.max_train_iterations = self.train_steps // iterations
     self.eval_steps = int(eval_steps)
     self.eval_batch_size = self.config['eval_batch_size']
-    tpu_init = [tpu.initialize_system()]
+    with self.init_graph.as_default():
+      tpu_init = [tpu.initialize_system()]
     self.tpu_shutdown = tpu.shutdown_system()
     self.tpu_cluster_resolver = TPUClusterResolver(
         tpu_name,
