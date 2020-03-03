@@ -207,8 +207,8 @@ def update_trainers(trainers, i, sync_all=False):
   accumulator = tflex.variable_accumulator_new()
   threads = []
   for trainer in trainers:
-    if tflex.trainer_fresh(trainer):
-      continue
+    #if tflex.trainer_fresh(trainer):
+    #  continue
     def thunk(trainer, accumulator, index):
       for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
         tflex.trainer_slice_read(trainer, accumulator, variables)
