@@ -116,12 +116,51 @@ def _profiler_callback(comment, session_id):
   else:
     tf.logging.info("Profiling succeeded for %s. Overview page url:", comment)
 
+def dispatch(xs, thunk, *args, **kws):
+  n = len(xs)
+  results = [None] * n
+  with tqdm.tqdm(total=n) as pbar:
+    def thunk(i):
+      results[i] = thunk(i, *args, **kws)
+    for thread in tflex.parallelize(list(range(n)), thunk):
+      thread.join()
+      pbar.update(1)
+    return results
 
 class TrainAndEvalRunner(object):
+  def __init__(self, *args, **kws):
+    tf.logging.info("TrainAndEvalRunner: constructor")
+    tpus = FLAGS.tpu or FLAGS.master
+    self.tpus = tpus.split(',')
+    self.shards = dispatch(self.tpus, lambda i: SwarmRunner(i, self.tpus[i], *args, **kws))
+
+  def initialize(self, train_input_fn, eval_input_fn, model_fn, params, logger_fn=None):
+    """Build graphs for the TPU device and the input pipelines.
+
+    Args:
+      train_input_fn: Dataset input graph generation function for training.
+      eval_input_fn: Dataset input graph generation function for training.
+      model_fn: Model definition function
+      params:  Parameters to input and model functions
+    """
+    tf.logging.info("TrainAndEvalRunner: initialize()...")
+    dispatch(self.tpus, lambda i: self.shards[i].initialize(train_input_fn, eval_input_fn, model_fn, params, logger_fn))
+
+  def train_and_eval(self, output_summaries=False, enable_tracing=True):
+    """Run the Train steps on the TPU device."""
+    tf.logging.info("TrainAndEvalRunner: train_and_eval()...")
+    dispatch(self.tpus, lambda i: self.shards[i].train_and_eval(output_summaries=output_summaries, enable_tracing=enable_tracing))
+
+  def shutdown(self):
+    tf.logging.info("TrainAndEvalRunner: shutdown()...")
+    dispatch(self.tpus, lambda i: self.shards[i].shutdown())
+
+class SwarmRunner(object):
   """Remove init overheads in TPU Estimator via direct session.run calls."""
 
-  def __init__(self, iterations, train_steps, eval_steps):
-    tf.logging.info("TrainAndEvalRunner: constructor")
+  def __init__(self, index, tpu, iterations, train_steps, eval_steps):
+    tf.logging.info("SwarmRunner: constructor")
+    self.index = index
     self.feature_structure = {}
     self.eval_feature_structure = {}
     self.loss = None
@@ -161,7 +200,7 @@ class TrainAndEvalRunner(object):
     tpu_init = [tpu.initialize_system()]
     self.tpu_shutdown = tpu.shutdown_system()
     self.tpu_cluster_resolver = TPUClusterResolver(
-        FLAGS.tpu or FLAGS.master,
+        tpu,
         zone=FLAGS.tpu_zone,
         project=FLAGS.gcp_project)
     self.config = tf.ConfigProto(
