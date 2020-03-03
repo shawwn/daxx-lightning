@@ -303,10 +303,13 @@ class TrainAndEvalRunner(object):
     self.build_enqueue_ops(train_input_fn, params, 0)
 
     # Start the build of the model
-    self.log_ops = {}
     mparams = dict(params)
-    mparams['log'] = self.log_ops
+    mparams['log'] = {}
     tpu_step = self.get_tpu_step(mparams, model_fn)
+    if 'stats' in mparams['log']:
+      with self.graph.as_default():
+        global_step = tf.train.get_global_step()
+        self.log_ops = mparams['log']['stats'](global_step)
 
     @tpu_function.on_device_training_loop
     def train_loop():
@@ -546,7 +549,7 @@ class TrainAndEvalRunner(object):
     session_out = self.eval_output_sess.run(self.metric_value_ops)
     for k, v in session_out.items():
       eval_results[k] = v
-    session_out = self.eval_output_sess.run(self.log_ops)
+    session_out = self.sess.run(self.log_ops)
     for k, v in session_out.items():
       eval_results[k] = v
 

@@ -399,14 +399,14 @@ def resnet_model_fn(features, labels, mode, params):
   loss = cross_entropy + FLAGS.weight_decay * tf.add_n(
       [tf.nn.l2_loss(v) for v in tf.trainable_variables()
        if 'batch_normalization' not in v.name])
-  # Compute the current epoch and associated learning rate from global_step.
-  global_step = tf.train.get_or_create_global_step()
-  steps_per_epoch = tf.constant(FLAGS.num_train_images / FLAGS.train_batch_size, dtype=tf.float32)
-  current_epoch = (tf.cast(global_step, tf.float32) /
-                   steps_per_epoch)
 
   host_call = None
   if mode == tf.estimator.ModeKeys.TRAIN:
+    # Compute the current epoch and associated learning rate from global_step.
+    global_step = tf.train.get_or_create_global_step()
+    steps_per_epoch = tf.constant(FLAGS.num_train_images / FLAGS.train_batch_size, dtype=tf.float32)
+    current_epoch = (tf.cast(global_step, tf.float32) /
+                     steps_per_epoch)
     mlp_log.mlperf_print(
         'model_bn_span',
         FLAGS.distributed_group_size *
@@ -425,9 +425,19 @@ def resnet_model_fn(features, labels, mode, params):
           use_nesterov=True)
       mlp_log.mlperf_print('opt_momentum', FLAGS.momentum)
     if 'log' in params:
-      params['log']['learning_rate'] = learning_rate
-      params['log']['current_epoch'] = current_epoch
-      params['log']['steps_per_epoch'] = steps_per_epoch
+      def logger_fn(global_step):
+        steps_per_epoch = tf.constant(FLAGS.num_train_images / FLAGS.train_batch_size, dtype=tf.float32)
+        current_epoch = (tf.cast(global_step, tf.float32) / steps_per_epoch)
+        if FLAGS.enable_lars:
+          learning_rate = lars_util.get_lars_lr(current_epoch)
+        else:
+          learning_rate = learning_rate_schedule(current_epoch)
+        return {
+          'learning_rate': learning_rate,
+          'current_epoch': current_epoch,
+          'steps_per_epoch': steps_per_epoch,
+        }
+      params['log']['stats'] = logger_fn
     if FLAGS.use_tpu:
       # When using TPU, wrap the optimizer with CrossShardOptimizer which
       # handles synchronization details between different TPU cores. To the
