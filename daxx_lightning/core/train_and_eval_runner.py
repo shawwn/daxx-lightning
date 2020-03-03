@@ -375,7 +375,7 @@ class TrainAndEvalRunner(object):
       self.fetch_vars = list(tflex.split_by_params(self.train_vars))
       self.saver = tf.train.Saver()
       n = len(self.fetch_vars)
-      with tqdm(total=n) as pbar:
+      with tqdm.tqdm(total=n) as pbar:
         def thunk(i):
           variables = self.variables(i)
           self.sess.run(variables)
