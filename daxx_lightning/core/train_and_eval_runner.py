@@ -309,7 +309,7 @@ class TrainAndEvalRunner(object):
     self.log_ops = None
     if logger_fn:
       with self.log_graph.as_default():
-        self.log_step = tf.get_or_create_global_step()
+        self.log_step = tf.train.get_or_create_global_step()
         self.log_ops = logger_fn(self.log_step)
         self.log_initializer = tf.global_variables_initializer()
         self.log_step_in = tf.placeholder(tf.int64, [])
