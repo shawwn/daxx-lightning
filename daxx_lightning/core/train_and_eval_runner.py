@@ -306,12 +306,14 @@ class TrainAndEvalRunner(object):
 
     # Start the build of the model
     tpu_step = self.get_tpu_step(params, model_fn)
-    self.log_step = None
     self.log_ops = None
     if logger_fn:
       with self.log_graph.as_default():
-        self.log_step = tf.placeholder(tf.int64, [])
+        self.log_step = tf.get_or_create_global_step()
         self.log_ops = logger_fn(self.log_step)
+        self.log_initializer = tf.global_variables_initializer()
+        self.log_step_in = tf.placeholder(tf.int64, [])
+        self.log_step_init = tf.assign(self.log_step, self.log_step_in)
 
     @tpu_function.on_device_training_loop
     def train_loop():
@@ -351,6 +353,10 @@ class TrainAndEvalRunner(object):
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
       self.saver = tf.train.Saver()
+
+    with self.log_graph.as_default():
+      self.log_sess.run(self.log_initializer)
+      self.log_sess.run(self.log_step_init, {self.log_step_in: 0})
 
     def train_eval_thread_fn(sess, train_eval_op):
       sess.run([train_eval_op])
@@ -554,9 +560,11 @@ class TrainAndEvalRunner(object):
     session_out = self.eval_output_sess.run(self.metric_value_ops)
     for k, v in session_out.items():
       eval_results[k] = v
-    session_out = self.log_sess.run(self.log_ops, {self.log_step: self.cur_step})
-    for k, v in session_out.items():
-      eval_results[k] = v
+    self.log_sess.run(self.log_step_init, {self.log_step_in: self.cur_step})
+    if self.log_ops:
+      session_out = self.log_sess.run(self.log_ops)
+      for k, v in session_out.items():
+        eval_results[k] = v
 
     return eval_results
 
