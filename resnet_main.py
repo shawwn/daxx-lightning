@@ -399,15 +399,14 @@ def resnet_model_fn(features, labels, mode, params):
   loss = cross_entropy + FLAGS.weight_decay * tf.add_n(
       [tf.nn.l2_loss(v) for v in tf.trainable_variables()
        if 'batch_normalization' not in v.name])
+  # Compute the current epoch and associated learning rate from global_step.
+  global_step = tf.train.get_or_create_global_step()
+  steps_per_epoch = FLAGS.num_train_images / FLAGS.train_batch_size
+  current_epoch = (tf.cast(global_step, tf.float32) /
+                   steps_per_epoch)
 
   host_call = None
   if mode == tf.estimator.ModeKeys.TRAIN:
-    # Compute the current epoch and associated learning rate from global_step.
-    global_step = tf.train.get_or_create_global_step()
-    steps_per_epoch = FLAGS.num_train_images / FLAGS.train_batch_size
-    current_epoch = (tf.cast(global_step, tf.float32) /
-                     steps_per_epoch)
-
     mlp_log.mlperf_print(
         'model_bn_span',
         FLAGS.distributed_group_size *
@@ -490,7 +489,7 @@ def resnet_model_fn(features, labels, mode, params):
 
   eval_metrics = None
   if mode == tf.estimator.ModeKeys.EVAL:
-    def metric_fn(labels, logits, learning_rate):
+    def metric_fn(labels, logits, learning_rate, current_epoch, steps_per_epoch):
       """Evaluation metric function. Evaluates accuracy.
 
       This function is executed on the CPU and should not directly reference
@@ -522,9 +521,15 @@ def resnet_model_fn(features, labels, mode, params):
           'top_1_accuracy': top_1_accuracy,
           'top_5_accuracy': top_5_accuracy,
           'learning_rate': learning_rate,
+          'current_epoch': current_epoch,
+          'steps_per_epoch': steps_per_epoch,
       }
 
-    eval_metrics = (metric_fn, [labels, logits, learning_rate])
+    if FLAGS.enable_lars:
+      learning_rate = lars_util.get_lars_lr(current_epoch)
+    else:
+      learning_rate = learning_rate_schedule(current_epoch)
+    eval_metrics = (metric_fn, [labels, logits, learning_rate, current_epoch, steps_per_epoch])
 
   return tf.contrib.tpu.TPUEstimatorSpec(
       mode=mode,
