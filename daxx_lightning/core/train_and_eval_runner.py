@@ -131,8 +131,12 @@ class TrainAndEvalRunner(object):
   def __init__(self, *args, **kws):
     tf.logging.info("TrainAndEvalRunner: constructor")
     tpus = FLAGS.tpu or FLAGS.master
-    self.tpus = tpus.split(',')
-    self.shards = dispatch(self.tpus, lambda i: SwarmRunner(i, self.tpus[i], *args, **kws))
+    self.tpus = []
+    for x in self.tpus:
+      name, cores = x.split(',')
+      cores = int(cores)
+      self.tpus.append([name, cores])
+    self.shards = dispatch(self.tpus, lambda i: SwarmRunner(i, *self.tpus[i], *args, **kws))
 
   def initialize(self, train_input_fn, eval_input_fn, model_fn, params, logger_fn=None):
     """Build graphs for the TPU device and the input pipelines.
@@ -158,7 +162,7 @@ class TrainAndEvalRunner(object):
 class SwarmRunner(object):
   """Remove init overheads in TPU Estimator via direct session.run calls."""
 
-  def __init__(self, index, tpu_name, iterations, train_steps, eval_steps):
+  def __init__(self, index, tpu_name, num_cores, iterations, train_steps, eval_steps):
     tf.logging.info("SwarmRunner: constructor")
     self.index = index
     self.tpu_name = tpu_name
@@ -169,7 +173,7 @@ class SwarmRunner(object):
     self.infeed_queue = []
     self.eval_infeed_queue = []
     self.enqueue_ops = []
-    self.num_hosts = FLAGS.num_cores // FLAGS.tpu_cores_per_host
+    self.num_hosts = num_cores // FLAGS.tpu_cores_per_host
     self.dequeue_ops = []
     self.queue = Queue.Queue()
     self.eval_enqueue_ops = []
