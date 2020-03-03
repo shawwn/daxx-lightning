@@ -15,8 +15,6 @@ TPU_CORES="${TPU_CORES:-1024}"
 TPU_INDEX="${TPU_INDEX:-0}"
 tpu="${TPU_NAME:-tpu-v3-${TPU_CORES}-euw4a-${TPU_INDEX}}"
 
-TPU_CORES="${TPU_CORES:-512}"
-
 data_dir="gs://danbooru-euw4a/imagenet/out"
 model_dir="gs://danbooru-euw4a/mlperf/benchmarks/imagenet/tf-1-14-1-dev20190518/v3-${TPU_CORES}/results-${i}"
 export_dir="gs://danbooru-euw4a/mlperf/benchmarks/imagenet/tf-1-14-1-dev20190518/v3-${TPU_CORES}/results-${i}"
