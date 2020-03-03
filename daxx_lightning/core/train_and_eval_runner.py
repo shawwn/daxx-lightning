@@ -575,7 +575,8 @@ class SwarmRunner(object):
       with tqdm.tqdm(total=n) as pbar:
         def thunk(i):
           variables = self.variables(i)
-          self.sess.run(variables)
+          values = self.sess.run(variables)
+          tflex.assign_values(variables, values, session=self.sess)
         for thread in tflex.parallelize(list(range(n)), thunk):
           thread.join()
           pbar.update(1)
@@ -802,9 +803,10 @@ class SwarmRunner(object):
         eval_results[k] = v
       for k, v in self.cfg.items():
         eval_results[k] = v
-      for i in tqdm.trange(len(self.fetch_vars)):
-        variables = self.variables(i)
-        self.sess.run(variables)
+      if False:
+        for i in tqdm.trange(len(self.fetch_vars)):
+          variables = self.variables(i)
+          self.sess.run(variables)
     return eval_results
 
   def shutdown(self):
