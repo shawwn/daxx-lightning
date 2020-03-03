@@ -379,6 +379,9 @@ class SwarmRunner(object):
 
     tf.logging.info("TrainAndEvalRunner: initialize method")
 
+    params = dict(params)
+    params['batch_size'] = self.cfg['train_batch_size']
+
     self.build_enqueue_ops(train_input_fn, params, 0)
 
     # Start the build of the model
