@@ -489,7 +489,7 @@ def resnet_model_fn(features, labels, mode, params):
 
   eval_metrics = None
   if mode == tf.estimator.ModeKeys.EVAL:
-    def metric_fn(labels, logits, learning_rate, current_epoch, steps_per_epoch):
+    def metric_fn(labels, logits):
       """Evaluation metric function. Evaluates accuracy.
 
       This function is executed on the CPU and should not directly reference
@@ -529,7 +529,7 @@ def resnet_model_fn(features, labels, mode, params):
       learning_rate = lars_util.get_lars_lr(current_epoch)
     else:
       learning_rate = learning_rate_schedule(current_epoch)
-    eval_metrics = (metric_fn, [labels, logits, learning_rate, current_epoch, steps_per_epoch])
+    eval_metrics = (metric_fn, [labels, logits])
 
   return tf.contrib.tpu.TPUEstimatorSpec(
       mode=mode,
