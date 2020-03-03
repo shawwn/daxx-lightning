@@ -386,19 +386,19 @@ def print_backtrace():
 
 class Session(tf.Session):
   def __init__(self, target='auto', graph=None, config=None, init_tpu=False, id=None):
-    if config is None:
-      config = tf.ConfigProto(operation_timeout_in_ms=6000 * 60 * 1000,
-                              graph_options=tf.GraphOptions(
-                                rewrite_options=rewriter_config_pb2.RewriterConfig(
-                                  disable_meta_optimizer=True)),
-                              isolate_session_state=True)
-    config.isolate_session_state = True
+    #if config is None:
+    #  config = tf.ConfigProto(operation_timeout_in_ms=6000 * 60 * 1000,
+    #                          graph_options=tf.GraphOptions(
+    #                            rewrite_options=rewriter_config_pb2.RewriterConfig(
+    #                              disable_meta_optimizer=True)),
+    #                          isolate_session_state=True)
+    #config.isolate_session_state = True
     resolver = get_tpu_resolver(target)
     if resolver is not None:
       target = resolver.get_master()
-      cluster_spec = resolver.cluster_spec()
-      if cluster_spec:
-        config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+      #cluster_spec = resolver.cluster_spec()
+      #if cluster_spec:
+      #  config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
     else:
       if target == 'auto':
         target = None
