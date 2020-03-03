@@ -158,7 +158,7 @@ class TrainAndEvalRunner(object):
 class SwarmRunner(object):
   """Remove init overheads in TPU Estimator via direct session.run calls."""
 
-  def __init__(self, index, tpu, iterations, train_steps, eval_steps):
+  def __init__(self, index, tpu_name, iterations, train_steps, eval_steps):
     tf.logging.info("SwarmRunner: constructor")
     self.index = index
     self.feature_structure = {}
@@ -200,7 +200,7 @@ class SwarmRunner(object):
     tpu_init = [tpu.initialize_system()]
     self.tpu_shutdown = tpu.shutdown_system()
     self.tpu_cluster_resolver = TPUClusterResolver(
-        tpu,
+        tpu_name,
         zone=FLAGS.tpu_zone,
         project=FLAGS.gcp_project)
     self.config = tf.ConfigProto(
