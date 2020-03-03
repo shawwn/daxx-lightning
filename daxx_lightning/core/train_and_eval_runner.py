@@ -540,3 +540,5 @@ class TrainAndEvalRunner(object):
     self.train_eval_thread.join()
     self.infeed_thread.join()
     self.sess.close()
+    tf.logging.info("Shutting down TPU...")
+    self.init_sess.run(self.tpu_shutdown)
