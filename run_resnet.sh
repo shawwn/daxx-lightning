@@ -76,12 +76,42 @@ export DEBUG=1
 #--use_train_runner=True \
 #--weight_decay=0.0002
 
+#exec python3 resnet_main.py --data_dir="$data_dir" \
+#--output_summaries=True \
+#--distributed_group_size=1 \
+#--enable_lars=True \
+#--eval_batch_size=32768 \
+#--iterations_per_loop=157 \
+#--label_smoothing=0.1 \
+#--lars_base_learning_rate=31.2 \
+#--lars_epsilon=1e-05 \
+#--lars_warmup_epochs=25 \
+#--mode=in_memory_eval \
+#--model_dir="$model_dir" \
+#--export_dir="$export_dir" \
+#--save_graphs="$save_graphs" \
+#--num_cores="${TPU_CORES}" \
+#--num_prefetch_threads=16 \
+#--prefetch_depth_auto_tune=True \
+#--resnet_depth=50 \
+#--skip_host_call=True \
+#--steps_per_eval=157 \
+#--stop_threshold=0.759 \
+#--tpu=$tpu \
+#--train_batch_size=32768 \
+#--train_steps=2983 \
+#--use_async_checkpointing=True \
+#--use_train_runner=True \
+#--weight_decay=0.0001 \
+#"$@"
+#
+
 exec python3 resnet_main.py --data_dir="$data_dir" \
 --output_summaries=True \
 --distributed_group_size=1 \
 --enable_lars=True \
---eval_batch_size=32768 \
---iterations_per_loop=157 \
+--eval_batch_size=16384 \
+--iterations_per_loop=313 \
 --label_smoothing=0.1 \
 --lars_base_learning_rate=31.2 \
 --lars_epsilon=1e-05 \
@@ -95,13 +125,12 @@ exec python3 resnet_main.py --data_dir="$data_dir" \
 --prefetch_depth_auto_tune=True \
 --resnet_depth=50 \
 --skip_host_call=True \
---steps_per_eval=157 \
+--steps_per_eval=313 \
 --stop_threshold=0.759 \
 --tpu=$tpu \
---train_batch_size=32768 \
---train_steps=2983 \
+--train_batch_size=16384 \
+--train_steps=5634 \
 --use_async_checkpointing=True \
 --use_train_runner=True \
 --weight_decay=0.0001 \
 "$@"
-
