@@ -132,8 +132,8 @@ class TrainAndEvalRunner(object):
     tf.logging.info("TrainAndEvalRunner: constructor")
     tpus = FLAGS.tpu or FLAGS.master
     self.tpus = []
-    for x in self.tpus:
-      name, cores = x.split(',')
+    for part in tpus.split(','):
+      name, cores = part.split(':')
       cores = int(cores)
       self.tpus.append([name, cores])
     self.shards = dispatch(self.tpus, lambda i: SwarmRunner(i, *self.tpus[i], *args, **kws))
