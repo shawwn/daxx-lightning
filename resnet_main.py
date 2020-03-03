@@ -846,7 +846,7 @@ def main(unused_argv):
       tf.logging.info('Finished training up to step %d. Elapsed seconds %d.',
                       FLAGS.train_steps, elapsed_time)
 
-    if FLAGS.export_dir is not None:
+    if FLAGS.export_dir is not None and not FLAGS.use_train_runner:
       # The guide to serve a exported TensorFlow model is at:
       #    https://www.tensorflow.org/serving/serving_basic
       tf.logging.info('Starting to export model.')
