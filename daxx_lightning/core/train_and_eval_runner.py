@@ -443,6 +443,7 @@ class SwarmRunner(object):
       self.global_step = tf.train.get_or_create_global_step()
       self.global_step_in = tf.placeholder(tf.int64, [])
       self.global_step_init = tf.assign(self.global_step, self.global_step_in)
+      self.sess.run(self.global_step_init, {self.global_step_in: 0})
       self.train_vars = tf.trainable_variables()
       self.fetch_vars = list(tflex.split_by_params(self.train_vars))
       self.saver = tf.train.Saver()
