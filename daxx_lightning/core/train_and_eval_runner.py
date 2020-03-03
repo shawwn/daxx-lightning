@@ -132,6 +132,8 @@ import json
 class TrainAndEvalRunner(object):
   def __init__(self, *args, **kws):
     tf.logging.info("TrainAndEvalRunner: constructor")
+    self._lock = threading.RLock()
+    self._cur_step = 0
     tpus = FLAGS.tpu or FLAGS.master
     self.tpus = []
     for part in tpus.split(','):
@@ -140,7 +142,7 @@ class TrainAndEvalRunner(object):
       with open('configs/tpu-v3-%d.json' % cores) as f:
         config = json.load(f)
       self.tpus.append([name, cores, config])
-    self.shards = dispatch(self.tpus, lambda i: SwarmRunner(i, *self.tpus[i], *args, **kws))
+    self.shards = dispatch(self.tpus, lambda i: SwarmRunner(self, i, *self.tpus[i], *args, **kws))
     for i, shard in enumerate(self.shards):
       tf.logging.info("Checking shard %d", i)
       assert shard is not None
@@ -166,14 +168,20 @@ class TrainAndEvalRunner(object):
     tf.logging.info("TrainAndEvalRunner: shutdown()...")
     dispatch(self.tpus, lambda i: self.shards[i].shutdown())
 
+  def claim(self, n):
+    with self._lock:
+      self._cur_step += n
+      return self._cur_step
+
 class SwarmRunner(object):
   """Remove init overheads in TPU Estimator via direct session.run calls."""
 
-  def __init__(self, index, tpu_name, num_cores, cfg, iterations, train_steps, eval_steps):
+  def __init__(self, coordinator, index, tpu_name, num_cores, cfg, iterations, train_steps, eval_steps):
     tf.logging.info("SwarmRunner: constructor")
     iterations = cfg['iterations_per_loop']
     train_steps = cfg['train_steps']
     eval_steps = cfg['steps_per_eval']
+    self.coordinator = coordinator
     self.index = index
     self.cfg = cfg
     self.tpu_name = tpu_name
@@ -432,6 +440,9 @@ class SwarmRunner(object):
     with self.graph.as_default():
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
+      self.global_step = tf.train.get_or_create_global_step()
+      self.global_step_in = tf.placeholder(tf.int64, [])
+      self.global_step_init = tf.assign(self.global_step, self.global_step_in)
       self.train_vars = tf.trainable_variables()
       self.fetch_vars = list(tflex.split_by_params(self.train_vars))
       self.saver = tf.train.Saver()
@@ -574,7 +585,8 @@ class SwarmRunner(object):
       start = time.time()
       tf.logging.info("TrainAndEvalRunner: start next %d steps",
                       self.iterations)
-      self.cur_step += self.iterations
+      self.cur_step = self.coordinator.claim(self.iterations)
+      self.sess.run(self.global_step_init, {self.global_step_in: self.cur_step})
       epoch = self.cur_step // self.steps_per_epoch - 1
       mlp_log.mlperf_print(
           "block_start", None, metadata={"first_epoch_num": epoch + 1,
