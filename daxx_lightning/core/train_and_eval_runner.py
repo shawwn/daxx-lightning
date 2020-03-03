@@ -288,7 +288,7 @@ class TrainAndEvalRunner(object):
     else:
       tf.logging.info("profiler.collect() failed.")
 
-  def initialize(self, train_input_fn, eval_input_fn, model_fn, params):
+  def initialize(self, train_input_fn, eval_input_fn, model_fn, params, logger_fn=None):
     """Build graphs for the TPU device and the input pipelines.
 
     Args:
@@ -303,13 +303,12 @@ class TrainAndEvalRunner(object):
     self.build_enqueue_ops(train_input_fn, params, 0)
 
     # Start the build of the model
-    mparams = dict(params)
-    mparams['log'] = {}
-    tpu_step = self.get_tpu_step(mparams, model_fn)
-    if 'stats' in mparams['log']:
+    tpu_step = self.get_tpu_step(params, model_fn)
+    self.log_ops = None
+    if logger_fn:
       with self.graph.as_default():
-        global_step = tf.train.get_global_step()
-        self.log_ops = mparams['log']['stats'](global_step)
+        global_step = tf.train.get_or_create_global_step()
+        self.log_ops = logger_fn(global_step)
 
     @tpu_function.on_device_training_loop
     def train_loop():

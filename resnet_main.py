@@ -424,20 +424,6 @@ def resnet_model_fn(features, labels, mode, params):
           momentum=FLAGS.momentum,
           use_nesterov=True)
       mlp_log.mlperf_print('opt_momentum', FLAGS.momentum)
-    if 'log' in params:
-      def logger_fn(global_step):
-        steps_per_epoch = tf.constant(FLAGS.num_train_images / FLAGS.train_batch_size, dtype=tf.float32)
-        current_epoch = (tf.cast(global_step, tf.float32) / steps_per_epoch)
-        if FLAGS.enable_lars:
-          learning_rate = lars_util.get_lars_lr(current_epoch)
-        else:
-          learning_rate = learning_rate_schedule(current_epoch)
-        return {
-          'learning_rate': learning_rate,
-          'current_epoch': current_epoch,
-          'steps_per_epoch': steps_per_epoch,
-        }
-      params['log']['stats'] = logger_fn
     if FLAGS.use_tpu:
       # When using TPU, wrap the optimizer with CrossShardOptimizer which
       # handles synchronization details between different TPU cores. To the
@@ -693,8 +679,20 @@ def main(unused_argv):
 
   if FLAGS.use_train_runner and FLAGS.mode == 'in_memory_eval':
     params = {'batch_size': FLAGS.train_batch_size}
+    def logger_fn(global_step):
+      steps_per_epoch = tf.constant(FLAGS.num_train_images / FLAGS.train_batch_size, dtype=tf.float32)
+      current_epoch = (tf.cast(global_step, tf.float32) / steps_per_epoch)
+      if FLAGS.enable_lars:
+        learning_rate = lars_util.get_lars_lr(current_epoch)
+      else:
+        learning_rate = learning_rate_schedule(current_epoch)
+      return {
+        'learning_rate': learning_rate,
+        'current_epoch': current_epoch,
+        'steps_per_epoch': steps_per_epoch,
+      }
     low_level_runner.initialize(imagenet_train.input_fn, imagenet_eval.input_fn,
-                                resnet_model_fn, params)
+                                resnet_model_fn, params, logger_fn)
 
   if FLAGS.mode != 'eval':
     mlp_log.mlperf_print('init_stop', None)
