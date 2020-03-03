@@ -120,6 +120,8 @@ class TrainAndEvalRunner(object):
     self.steps_per_epoch = FLAGS.num_train_images // FLAGS.train_batch_size
     self.iterator = None
     self.sess = None
+    self.saver = None
+    self.checkpoint_thread = None
     self.input_sess = None
     self.eval_input_sess = None
     self.eval_output_sess = None
@@ -337,6 +339,7 @@ class TrainAndEvalRunner(object):
     with self.graph.as_default():
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
+      self.saver = tf.train.Saver()
 
     def train_eval_thread_fn(sess, train_eval_op):
       sess.run([train_eval_op])
@@ -490,6 +493,14 @@ class TrainAndEvalRunner(object):
       tf.logging.info("Eval results at step %d: %s", cur_step, eval_results)
       if eval_results["top_1_accuracy"] >= FLAGS.stop_threshold:
         success = True
+        if FLAGS.export_dir is not None:
+          def checkpoint_thread_fn(saver, sess, step):
+            name = FLAGS.model_dir + "/model.ckpt-%d" % (step)
+            tf.logging.info("Saving model %d: %s", step, name)
+            saver.save(sess, name)
+          self.checkpoint_thread = threading.Thread(
+            target=checkpoint_thread_fn, args=(self.saver, self.sess, cur_step))
+          self.checkpoint_thread.start()
         mlp_log.mlperf_print("run_stop", None, metadata={"status": "success"})
         break
 
@@ -501,12 +512,6 @@ class TrainAndEvalRunner(object):
       mlp_log.mlperf_print("run_stop", None, metadata={"status": "abort"})
 
     mlp_log.mlperf_print("run_final", None)
-
-    if success and FLAGS.export_dir is not None:
-      tf.logging.info("Saving model %d: %s", cur_step, FLAGS.export_dir + "/model.ckpt-%d" % (cur_step))
-      with self.graph.as_default():
-        saver = tf.train.Saver()
-        saver.save(self.sess, FLAGS.export_dir + "/model.ckpt-%d" % (cur_step))
 
     if output_summaries:
       summary_writer.close()
@@ -539,6 +544,8 @@ class TrainAndEvalRunner(object):
     self.queue.put(_STOP)
     self.train_eval_thread.join()
     self.infeed_thread.join()
+    if self.checkpoint_thread is not None:
+      self.checkpoint_thread.join()
     self.sess.close()
     tf.logging.info("Shutting down TPU...")
     self.init_sess.run(self.tpu_shutdown)
