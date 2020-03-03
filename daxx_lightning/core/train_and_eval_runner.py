@@ -334,13 +334,12 @@ class TrainAndEvalRunner(object):
     self.eval_output_sess = tflex.Session(
         self.master, graph=self.eval_output_graph, config=self.config)
 
-    self.saver = None
-    if FLAGS.export_dir is not None:
-      self.saver = tf.train.Saver()
-
     with self.graph.as_default():
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
+      self.saver = None
+      if FLAGS.export_dir is not None:
+        self.saver = tf.train.Saver()
 
     def train_eval_thread_fn(sess, train_eval_op):
       sess.run([train_eval_op])
