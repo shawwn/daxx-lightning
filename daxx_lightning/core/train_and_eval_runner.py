@@ -502,7 +502,7 @@ class TrainAndEvalRunner(object):
 
     mlp_log.mlperf_print("run_final", None)
 
-    if FLAGS.export_dir is not None:
+    if success and FLAGS.export_dir is not None:
       tf.logging.info("Saving model %d: %s", cur_step, FLAGS.export_dir + "/model.ckpt-%d" % (cur_step))
       with self.graph.as_default():
         saver = tf.train.Saver()
