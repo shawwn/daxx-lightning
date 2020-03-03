@@ -169,13 +169,13 @@ class TrainAndEvalRunner(object):
 class SwarmRunner(object):
   """Remove init overheads in TPU Estimator via direct session.run calls."""
 
-  def __init__(self, index, tpu_name, num_cores, config, iterations, train_steps, eval_steps):
+  def __init__(self, index, tpu_name, num_cores, cfg, iterations, train_steps, eval_steps):
     tf.logging.info("SwarmRunner: constructor")
-    iterations = config['iterations_per_loop']
-    train_steps = config['train_steps']
-    eval_steps = config['steps_per_eval']
+    iterations = cfg['iterations_per_loop']
+    train_steps = cfg['train_steps']
+    eval_steps = cfg['steps_per_eval']
     self.index = index
-    self.config = config
+    self.cfg = cfg
     self.tpu_name = tpu_name
     self.feature_structure = {}
     self.eval_feature_structure = {}
@@ -192,7 +192,7 @@ class SwarmRunner(object):
     self.dataset_initializer = []
     self.eval_dataset_initializer = []
     self.iterations = iterations
-    self.steps_per_epoch = FLAGS.num_train_images // config['train_batch_size']
+    self.steps_per_epoch = FLAGS.num_train_images // self.cfg['train_batch_size']
     self.iterator = None
     self.sess = None
     self.saver = None
@@ -214,7 +214,7 @@ class SwarmRunner(object):
     self.train_steps = train_steps
     self.max_train_iterations = self.train_steps // iterations
     self.eval_steps = int(eval_steps)
-    self.eval_batch_size = self.config['eval_batch_size']
+    self.eval_batch_size = self.cfg['eval_batch_size']
     with self.init_graph.as_default():
       tpu_init = [tpu.initialize_system()]
       self.tpu_shutdown = tpu.shutdown_system()
@@ -582,7 +582,7 @@ class SwarmRunner(object):
           "TrainAndEvalRunner ({}): step {} step time {} sec {} examples/sec".format(
               self.tpu_name,
               self.cur_step, end - start,
-              self.iterations * self.config['train_batch_size'] / (end - start)))
+              self.iterations * self.cfg['train_batch_size'] / (end - start)))
       # Run eval.
       # Write out summary to tensorboard.
       if output_summaries:
@@ -659,6 +659,8 @@ class SwarmRunner(object):
           log_ops[k] = v
       session_out = self.log_sess.run(log_ops)
       for k, v in session_out.items():
+        eval_results[k] = v
+      for k, v in self.cfg.items():
         eval_results[k] = v
       for i in tqdm.trange(len(self.fetch_vars)):
         variables = self.variables(i)
