@@ -127,6 +127,8 @@ def dispatch(xs, thunk, *args, **kws):
       pbar.update(1)
     return results
 
+import json
+
 class TrainAndEvalRunner(object):
   def __init__(self, *args, **kws):
     tf.logging.info("TrainAndEvalRunner: constructor")
@@ -135,7 +137,9 @@ class TrainAndEvalRunner(object):
     for part in tpus.split(','):
       name, cores = part.split(':')
       cores = int(cores)
-      self.tpus.append([name, cores])
+      with open('configs/tpu-v3-%d.json' % cores) as f:
+        config = json.load(f)
+      self.tpus.append([name, cores, config])
     self.shards = dispatch(self.tpus, lambda i: SwarmRunner(i, *self.tpus[i], *args, **kws))
 
   def initialize(self, train_input_fn, eval_input_fn, model_fn, params, logger_fn=None):
@@ -162,9 +166,13 @@ class TrainAndEvalRunner(object):
 class SwarmRunner(object):
   """Remove init overheads in TPU Estimator via direct session.run calls."""
 
-  def __init__(self, index, tpu_name, num_cores, iterations, train_steps, eval_steps):
+  def __init__(self, index, tpu_name, num_cores, config, iterations, train_steps, eval_steps):
     tf.logging.info("SwarmRunner: constructor")
+    iterations = config['iterations_per_loop']
+    train_steps = config['train_steps']
+    eval_steps = config['steps_per_eval']
     self.index = index
+    self.config = config
     self.tpu_name = tpu_name
     self.feature_structure = {}
     self.eval_feature_structure = {}
@@ -181,7 +189,7 @@ class SwarmRunner(object):
     self.dataset_initializer = []
     self.eval_dataset_initializer = []
     self.iterations = iterations
-    self.steps_per_epoch = FLAGS.num_train_images // FLAGS.train_batch_size
+    self.steps_per_epoch = FLAGS.num_train_images // config['train_batch_size']
     self.iterator = None
     self.sess = None
     self.saver = None
@@ -202,7 +210,7 @@ class SwarmRunner(object):
     self.train_steps = train_steps
     self.max_train_iterations = self.train_steps // iterations
     self.eval_steps = int(eval_steps)
-    self.eval_batch_size = FLAGS.eval_batch_size
+    self.eval_batch_size = self.config['eval_batch_size']
     tpu_init = [tpu.initialize_system()]
     self.tpu_shutdown = tpu.shutdown_system()
     self.tpu_cluster_resolver = TPUClusterResolver(
@@ -566,9 +574,10 @@ class SwarmRunner(object):
       eval_results = self.eval(self.eval_steps)
       end = time.time()
       tf.logging.info(
-          "TrainAndEvalRunner: step {} step time {} sec {} examples/sec".format(
+          "TrainAndEvalRunner ({}): step {} step time {} sec {} examples/sec".format(
+              self.tpu_name,
               self.cur_step, end - start,
-              self.iterations * FLAGS.train_batch_size / (end - start)))
+              self.iterations * self.config['train_batch_size'] / (end - start)))
       # Run eval.
       # Write out summary to tensorboard.
       if output_summaries:

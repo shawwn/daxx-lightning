@@ -1,0 +1,8 @@
+{
+  "eval_batch_size": 16384,
+  "train_batch_size": 16384,
+  "iterations_per_loop": 313,
+  "steps_per_eval": 313,
+  "train_steps": 5634
+}
+
