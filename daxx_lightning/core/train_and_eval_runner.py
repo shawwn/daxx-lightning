@@ -141,6 +141,9 @@ class TrainAndEvalRunner(object):
         config = json.load(f)
       self.tpus.append([name, cores, config])
     self.shards = dispatch(self.tpus, lambda i: SwarmRunner(i, *self.tpus[i], *args, **kws))
+    for i, shard in enumerate(self.shards):
+      tf.logging.info("Checking shard %d", i)
+      assert shard is not None
 
   def initialize(self, train_input_fn, eval_input_fn, model_fn, params, logger_fn=None):
     """Build graphs for the TPU device and the input pipelines.
