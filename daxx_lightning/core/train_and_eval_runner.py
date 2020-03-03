@@ -217,7 +217,7 @@ class SwarmRunner(object):
     self.eval_batch_size = self.config['eval_batch_size']
     with self.init_graph.as_default():
       tpu_init = [tpu.initialize_system()]
-    self.tpu_shutdown = tpu.shutdown_system()
+      self.tpu_shutdown = tpu.shutdown_system()
     self.tpu_cluster_resolver = TPUClusterResolver(
         tpu_name,
         zone=FLAGS.tpu_zone,
