@@ -490,7 +490,7 @@ def resnet_model_fn(features, labels, mode, params):
 
   eval_metrics = None
   if mode == tf.estimator.ModeKeys.EVAL:
-    def metric_fn(labels, logits):
+    def metric_fn(labels, logits, learning_rate):
       """Evaluation metric function. Evaluates accuracy.
 
       This function is executed on the CPU and should not directly reference
@@ -521,9 +521,10 @@ def resnet_model_fn(features, labels, mode, params):
       return {
           'top_1_accuracy': top_1_accuracy,
           'top_5_accuracy': top_5_accuracy,
+          'learning_rate': learning_rate,
       }
 
-    eval_metrics = (metric_fn, [labels, logits])
+    eval_metrics = (metric_fn, [labels, logits, learning_rate])
 
   return tf.contrib.tpu.TPUEstimatorSpec(
       mode=mode,

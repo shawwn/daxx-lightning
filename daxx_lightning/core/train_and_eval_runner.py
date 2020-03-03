@@ -541,7 +541,8 @@ class TrainAndEvalRunner(object):
       _ = self.eval_output_sess.run(self.metric_update_ops)
     # Compute eval metrics
     session_out = self.eval_output_sess.run(self.metric_value_ops)
-    eval_results["top_1_accuracy"] = session_out["top_1_accuracy"]
+    for k, v in session_out.items():
+      eval_results[k] = v
 
     return eval_results
 
