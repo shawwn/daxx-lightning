@@ -391,18 +391,13 @@ class TrainAndEvalRunner(object):
       sess.run([train_eval_op])
 
     # Start the just in time compilation of the model function
-    tf.logging.info("Starting JIT compilation...")
+    tf.logging.info("Starting JIT compilation (sleeping for 60 sec)...")
     self.train_eval_thread = threading.Thread(
         target=train_eval_thread_fn, args=(self.sess, self.train_eval_op))
     self.train_eval_thread.start()
 
     # Sleep for JTC to finish
-    start = time.time()
-    while self.train_eval_thread.is_alive():
-      time.sleep(1)
-      if time.time() - start > 60.0:
-        tf.logging.info("Warning: long compilation")
-    tf.logging.info("Compiled in %.2f seconds", time.time() - start)
+    time.sleep(60.0)
 
   def initialize_eval(self, params, eval_input_fn, model_fn):
     """Initialize eval."""
