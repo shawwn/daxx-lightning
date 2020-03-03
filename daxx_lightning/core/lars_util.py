@@ -38,7 +38,8 @@ flags.DEFINE_integer(
 
 
 def poly_rate_schedule(current_epoch,
-                       poly_rate=0.0):
+                       poly_rate=0.0,
+                       log=None):
   """Handles linear scaling rule, gradual warmup, and LR decay.
 
   The learning rate starts at 0, then it increases linearly per step.  After
@@ -88,6 +89,14 @@ def poly_rate_schedule(current_epoch,
   mlp_log.mlperf_print('lars_opt_learning_rate_decay_steps',
                        FLAGS.train_steps - w_steps + 1)
   mlp_log.mlperf_print('lars_opt_learning_rate_decay_poly_power', 2.0)
+  if log:
+    log['opt_base_learning_rate'] = plr
+    log['opt_learning_rate_warmup_epochs'] = w_epochs
+    log['lars_opt_end_learning_rate'] = 0.0001
+    log['lars_opt_learning_rate_decay_steps'] = FLAGS.train_steps - w_steps + 1
+    log['lars_opt_learning_rate_decay_poly_power'] = 2.0
+    log['lars_opt_weight_decay'] = FLAGS.weight_decay
+    log['lars_epsilon'] = FLAGS.lars_epsilon
 
   poly_rate = tf.train.polynomial_decay(
       plr,
@@ -97,10 +106,10 @@ def poly_rate_schedule(current_epoch,
   decay_rate = tf.where(current_epoch <= w_epochs, wrate, poly_rate)
   return decay_rate
 
-def get_lars_lr(current_epoch):
+def get_lars_lr(current_epoch, **kws):
   """Initialize the LARS Optimizer."""
 
-  return poly_rate_schedule(current_epoch, FLAGS.poly_rate)
+  return poly_rate_schedule(current_epoch, FLAGS.poly_rate, **kws)
 
 def init_lars_optimizer(current_epoch):
   """Initialize the LARS Optimizer."""

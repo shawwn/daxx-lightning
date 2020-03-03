@@ -682,14 +682,22 @@ def main(unused_argv):
     def logger_fn(global_step):
       steps_per_epoch = tf.constant(FLAGS.num_train_images / FLAGS.train_batch_size, dtype=tf.float32)
       current_epoch = (tf.cast(global_step, tf.float32) / steps_per_epoch)
+      log = {}
       if FLAGS.enable_lars:
-        learning_rate = lars_util.get_lars_lr(current_epoch)
+        learning_rate = lars_util.get_lars_lr(current_epoch, log=log)
+        log['enable_lars'] = 1.0
       else:
         learning_rate = learning_rate_schedule(current_epoch)
+        log['enable_lars'] = 0.0
       return {
+        'num_cores': FLAGS.num_cores,
+        'num_train_images': FLAGS.num_train_images,
+        'batch_size': FLAGS.train_batch_size,
         'learning_rate': learning_rate,
         'current_epoch': current_epoch,
         'steps_per_epoch': steps_per_epoch,
+        'momentum': FLAGS.momentum,
+        **log
       }
     low_level_runner.initialize(imagenet_train.input_fn, imagenet_eval.input_fn,
                                 resnet_model_fn, params, logger_fn)
