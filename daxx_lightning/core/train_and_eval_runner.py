@@ -173,6 +173,7 @@ class SwarmRunner(object):
     self.infeed_queue = []
     self.eval_infeed_queue = []
     self.enqueue_ops = []
+    self.num_cores = num_cores
     self.num_hosts = num_cores // FLAGS.tpu_cores_per_host
     self.dequeue_ops = []
     self.queue = Queue.Queue()
@@ -241,7 +242,7 @@ class SwarmRunner(object):
     """
 
     iparams = {}
-    iparams["batch_size"] = params["batch_size"] // FLAGS.num_cores
+    iparams["batch_size"] = params["batch_size"] // self.num_cores
     iparams["dataset_num_shards"] = self.num_hosts
 
     def get_enqueue_ops_fn():
@@ -493,7 +494,7 @@ class SwarmRunner(object):
         (self.train_eval_op,) = tpu.shard(
             train_eval_loop,
             inputs=[],
-            num_shards=FLAGS.num_cores,
+            num_shards=self.num_cores,
             outputs_from_all_shards=False)
 
         graph_io.write_graph(tf.Graph().as_graph_def(add_shapes=True),
