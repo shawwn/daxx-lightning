@@ -446,8 +446,8 @@ class Session(tf.Session):
 
 def split_by_params(vs, n=None, f=None):
   if n is None:
-    # n = 2e6
-    n = 1
+    n = 2e6
+    #n = 1
   if f is None:
     f = lambda x: np.prod(x.shape.as_list())
   i = 0
