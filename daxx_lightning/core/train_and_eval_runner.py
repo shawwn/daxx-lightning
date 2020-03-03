@@ -377,8 +377,8 @@ class TrainAndEvalRunner(object):
       n = len(self.fetch_vars)
       with tqdm(total=n) as pbar:
         def thunk(i):
-          for variables in self.variables(i):
-            self.sess.run(variables)
+          variables = self.variables(i)
+          self.sess.run(variables)
         for thread in tflex.parallelize(list(range(n)), thunk):
           thread.join()
           pbar.update(1)
@@ -607,8 +607,8 @@ class TrainAndEvalRunner(object):
       for k, v in session_out.items():
         eval_results[k] = v
       for i in tqdm.trange(len(self.fetch_vars)):
-        for variables in self.variables(i):
-          self.sess.run(variables)
+        variables = self.variables(i)
+        self.sess.run(variables)
     return eval_results
 
   def shutdown(self):
