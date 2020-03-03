@@ -6,13 +6,73 @@ i=`printf '%04d' $i`
 #data_dir=gs://mlperf-euw4/garden-imgnet/imagenet/combined
 #model_dir=gs://mlsh_test/dev/assets/model_dir-resnet_model_dir_1558673290 
 #tpu=TEST_TPU_1558673473.0 
-TPU_CORES="${TPU_CORES:-8}"
-data_dir="gs://danbooru-euw4a/data/imagenet/out"
+
+#TPU_CORES="${TPU_CORES:-8}"
+#TPU_INDEX="${TPU_INDEX:-68}"
+#tpu="${TPU_NAME:-tpu-v3-${TPU_CORES}-euw4a-${TPU_INDEX}}"
+
+TPU_CORES="${TPU_CORES:-1024}"
+TPU_INDEX="${TPU_INDEX:-0}"
+tpu="${TPU_NAME:-tpu-v3-${TPU_CORES}-euw4a-${TPU_INDEX}}"
+
+TPU_CORES="${TPU_CORES:-512}"
+
+data_dir="gs://danbooru-euw4a/imagenet/out"
 model_dir="gs://danbooru-euw4a/mlperf/benchmarks/imagenet/tf-1-14-1-dev20190518/v3-${TPU_CORES}/results-${i}"
 export_dir="gs://danbooru-euw4a/mlperf/benchmarks/imagenet/tf-1-14-1-dev20190518/v3-${TPU_CORES}/results-${i}"
-TPU_INDEX="${TPU_INDEX:-68}"
-#tpu="${TPU_NAME:-tpu-v3-${TPU_CORES}-euw4a-${TPU_INDEX}}"
-tpu="${TPU_NAME:-tpu-euw4a-${TPU_INDEX}}"
+
+export NOISY=1
+export DEBUG=1
+#
+#exec python3 resnet_main.py --data_dir="$data_dir" \
+#--output_summaries=True \
+#--enable_lars=True \
+#--eval_batch_size=1024 \
+#--iterations_per_loop=1252 \
+#--label_smoothing=0.1 \
+#--lars_base_learning_rate=31.2 \
+#--lars_epsilon=1e-05 \
+#--lars_warmup_epochs=25 \
+#--mode=in_memory_eval \
+#--model_dir="$model_dir" \
+#--export_dir="$export_dir" \
+#--num_cores="${TPU_CORES}" \
+#--num_prefetch_threads=16 \
+#--prefetch_depth_auto_tune=True \
+#--resnet_depth=50 \
+#--skip_host_call=True \
+#--steps_per_eval=157 \
+#--stop_threshold=0.759 \
+#--tpu=$tpu \
+#--train_batch_size=1024 \
+#--train_steps=113854 \
+#--use_async_checkpointing=True \
+#--use_train_runner=True \
+#--weight_decay=0.0002 \
+#"$@"
+#
+#
+#PYTHONPATH=.:/tmp/code_dir-resnet_code_1558420316/staging/models/rough/transformer/data_generators/:/tmp/code_dir-resnet_code_1558420316/staging/models/rough/:$PYTHONPATH python3 resnet_main.py --cache_decoded_image=True \
+#--data_dir=gs://mlperf-euw4/garden-imgnet/imagenet/combined \
+#--enable_lars=True \
+#--eval_batch_size=4096 \
+#--iterations_per_loop=1252 \
+#--label_smoothing=0.1 \
+#--mode=in_memory_eval \
+#--model_dir=gs://mlsh_test/dev/assets/model_dir-resnet_model_dir_1558420316 \
+#--num_cores=32 \
+#--num_prefetch_threads=16 \
+#--prefetch_depth_auto_tune=True \
+#--resnet_depth=50 \
+#--skip_host_call=True \
+#--steps_per_eval=1252 \
+#--stop_threshold=0.759 \
+#--tpu=TEST_TPU_1558420331.47 \
+#--train_batch_size=4096 \
+#--train_steps=22536 \
+#--use_async_checkpointing=True \
+#--use_train_runner=True \
+#--weight_decay=0.0002
 
 exec python3 resnet_main.py --data_dir="$data_dir" \
 --output_summaries=True \
@@ -27,7 +87,7 @@ exec python3 resnet_main.py --data_dir="$data_dir" \
 --mode=in_memory_eval \
 --model_dir="$model_dir" \
 --export_dir="$export_dir" \
---num_cores=512 \
+--num_cores="${TPU_CORES}" \
 --num_prefetch_threads=16 \
 --prefetch_depth_auto_tune=True \
 --resnet_depth=50 \

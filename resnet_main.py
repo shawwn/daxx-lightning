@@ -23,6 +23,7 @@ import os
 import time
 
 import tensorflow as tf
+from daxx_lightning.core import tflex
 
 from tensorflow.contrib import summary
 from tensorflow.contrib.training.python.training import evaluation
@@ -585,7 +586,7 @@ def _select_tables_from_flags():
 def main(unused_argv):
   steps_per_epoch = FLAGS.num_train_images // FLAGS.train_batch_size
   tpu = FLAGS.tpu or FLAGS.master
-  tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
+  tpu_cluster_resolver = tflex.TPUClusterResolver(
       tpu if (tpu or FLAGS.use_tpu) else '',
       zone=FLAGS.tpu_zone,
       project=FLAGS.gcp_project)
