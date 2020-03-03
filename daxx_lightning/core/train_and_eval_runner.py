@@ -303,7 +303,10 @@ class TrainAndEvalRunner(object):
     self.build_enqueue_ops(train_input_fn, params, 0)
 
     # Start the build of the model
-    tpu_step = self.get_tpu_step(params, model_fn)
+    self.log_ops = {}
+    mparams = dict(params)
+    mparams['log'] = self.log_ops
+    tpu_step = self.get_tpu_step(mparams, model_fn)
 
     @tpu_function.on_device_training_loop
     def train_loop():
@@ -541,6 +544,9 @@ class TrainAndEvalRunner(object):
       _ = self.eval_output_sess.run(self.metric_update_ops)
     # Compute eval metrics
     session_out = self.eval_output_sess.run(self.metric_value_ops)
+    for k, v in session_out.items():
+      eval_results[k] = v
+    session_out = self.eval_output_sess.run(self.log_ops)
     for k, v in session_out.items():
       eval_results[k] = v
 

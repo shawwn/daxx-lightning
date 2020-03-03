@@ -424,6 +424,10 @@ def resnet_model_fn(features, labels, mode, params):
           momentum=FLAGS.momentum,
           use_nesterov=True)
       mlp_log.mlperf_print('opt_momentum', FLAGS.momentum)
+    if 'log' in params:
+      params['log']['learning_rate'] = learning_rate
+      params['log']['current_epoch'] = current_epoch
+      params['log']['steps_per_epoch'] = steps_per_epoch
     if FLAGS.use_tpu:
       # When using TPU, wrap the optimizer with CrossShardOptimizer which
       # handles synchronization details between different TPU cores. To the
@@ -520,15 +524,8 @@ def resnet_model_fn(features, labels, mode, params):
       return {
           'top_1_accuracy': top_1_accuracy,
           'top_5_accuracy': top_5_accuracy,
-          'learning_rate': learning_rate,
-          'current_epoch': current_epoch,
-          'steps_per_epoch': steps_per_epoch,
       }
 
-    if FLAGS.enable_lars:
-      learning_rate = lars_util.get_lars_lr(current_epoch)
-    else:
-      learning_rate = learning_rate_schedule(current_epoch)
     eval_metrics = (metric_fn, [labels, logits])
 
   return tf.contrib.tpu.TPUEstimatorSpec(
