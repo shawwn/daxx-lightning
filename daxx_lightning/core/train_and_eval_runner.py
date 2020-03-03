@@ -27,6 +27,7 @@ from absl import flags
 from six.moves import queue as Queue
 import tensorflow as tf
 from . import tflex
+from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_function
@@ -135,13 +136,12 @@ class TrainAndEvalRunner(object):
     self.eval_batch_size = FLAGS.eval_batch_size
     tpu_init = [tpu.initialize_system()]
     self.tpu_shutdown = tpu.shutdown_system()
-    self.tpu_cluster_resolver = tflex.TPUClusterResolver(
+    self.tpu_cluster_resolver = TPUClusterResolver(
         FLAGS.tpu or FLAGS.master,
         zone=FLAGS.tpu_zone,
         project=FLAGS.gcp_project)
     self.config = tf.ConfigProto(
         operation_timeout_in_ms=600 * 60 * 1000,
-        cluster=self.tpu_cluster_resolver,
         allow_soft_placement=True,
         graph_options=tf.GraphOptions(
             rewrite_options=rewriter_config_pb2.RewriterConfig(
