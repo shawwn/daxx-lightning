@@ -120,9 +120,9 @@ def dispatch(xs, thunk, *args, **kws):
   n = len(xs)
   results = [None] * n
   with tqdm.tqdm(total=n) as pbar:
-    def thunk(i):
+    def fn(i):
       results[i] = thunk(i, *args, **kws)
-    for thread in tflex.parallelize(list(range(n)), thunk):
+    for thread in tflex.parallelize(list(range(n)), fn):
       thread.join()
       pbar.update(1)
     return results
