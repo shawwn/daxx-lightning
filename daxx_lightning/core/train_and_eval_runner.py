@@ -27,7 +27,8 @@ from absl import flags
 from six.moves import queue as Queue
 import tensorflow as tf
 from . import tflex
-from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
+#from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
+from .tflex import TPUClusterResolver
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_function
@@ -151,14 +152,16 @@ class TrainAndEvalRunner(object):
     if cluster_spec:
       self.config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
     self.master = self.tpu_cluster_resolver.get_master()
-    self.init_sess = tflex.Session(self.master, config=self.config)
-    self.init_sess.run(tpu_init)
+    self.init_sess = tf.Session(self.master, config=self.config)
+    #self.init_sess.run(tpu_init)
 
   def get_host(self, host_id):
     if self.master in ("", "local"):
       return "/replica:0/task:0"
     job_name = self.tpu_cluster_resolver.get_job_name() or "tpu_worker"
-    return "/job:%s/task:%d" % (job_name, host_id)
+    result = "/job:%s/replica:0/task:%d" % (job_name, host_id)
+    print(result)
+    return result
 
   def build_enqueue_ops(self, input_fn, params, host_id, is_training=True):
     """Build enqueue operations for the input pipeline in a given host.

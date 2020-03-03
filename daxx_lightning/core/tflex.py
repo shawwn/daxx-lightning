@@ -408,7 +408,7 @@ class Session(tf.Session):
     self._tflex_target = target
     self._tflex_config = config
     ensure_default('session', self)
-    ensure_default('devices', self.list_devices())
+    #ensure_default('devices', self.list_devices())
     ensure_default('graph', self.graph)
 
   @property
