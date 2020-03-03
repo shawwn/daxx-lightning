@@ -29,6 +29,7 @@ import tensorflow as tf
 from . import tflex
 #from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from .tflex import TPUClusterResolver
+import tqdm
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_function
@@ -42,6 +43,24 @@ FLAGS = flags.FLAGS
 _INITIAL_LOSS = 1e7
 _STOP = -1
 
+
+def trainer_variables(self, index, variables=None):
+  if variables is None:
+    variables = self.fetch_vars
+  else:
+    variables = list(tflex.split_by_params(variables))
+  return variables[index % len(variables)]
+
+tflex.trainer_variables = trainer_variables
+
+def trainer_slices(self, variables=None):
+  if variables is None:
+    variables = self.fetch_vars
+  else:
+    variables = list(tflex.split_by_params(variables))
+  return len(variables)
+
+tflex.trainer_slices = trainer_slices
 
 # Decorator function for tpu computation func that was passed to tpu.rewrite()
 # if there are embedded train and eval loops in this func, trace tools will
@@ -352,6 +371,8 @@ class TrainAndEvalRunner(object):
     with self.graph.as_default():
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
+      self.train_vars = tf.trainable_variables()
+      self.fetch_vars = list(tflex.split_by_params(self.train_vars))
       self.saver = tf.train.Saver()
 
     with self.log_graph.as_default():
@@ -571,7 +592,9 @@ class TrainAndEvalRunner(object):
       session_out = self.log_sess.run(log_ops)
       for k, v in session_out.items():
         eval_results[k] = v
-
+      for i in tqdm.trange(len(self.fetch_vars)):
+        for variables in self.variables(i):
+          self.sess.run(variables)
     return eval_results
 
   def shutdown(self):
@@ -583,3 +606,7 @@ class TrainAndEvalRunner(object):
     self.sess.close()
     tf.logging.info("Shutting down TPU...")
     self.init_sess.run(self.tpu_shutdown)
+
+  def variables(self, index):
+    return tflex.trainer_variables(self, index)
+
