@@ -247,9 +247,8 @@ class TrainAndEvalRunner(object):
   def get_tpu_step(self, mparams, model_fn, is_training=True):
     """Get the TPU graph generation function."""
 
-    def tpu_step(loss):
+    def tpu_step(loss_out):
       """Generate the TPU graph."""
-      del loss
       if is_training:
         values = self.infeed_queue[0].generate_dequeue_op(tpu_device=0)
         unflattened_inputs = data_nest.pack_sequence_as(self.feature_structure,
@@ -267,7 +266,9 @@ class TrainAndEvalRunner(object):
         loss, train_op = estimator_spec.loss, estimator_spec.train_op
         with tf.device(device_for_tpu_core(self.get_host(0))):
           with tf.control_dependencies([train_op]):
-            return tf.identity(loss)
+            loss_op = tf.identity(loss)
+            loss_out.write(loss_op)
+            return loss_op
       else:
         estimator_spec = model_fn(features, labels, tf.estimator.ModeKeys.EVAL,
                                   mparams)
@@ -279,7 +280,9 @@ class TrainAndEvalRunner(object):
         with tf.device(device_for_tpu_core(self.get_host(0))):
           outfeed_enqueue_ops = tpu.outfeed_enqueue_tuple(self.eval_tensors)
           with tf.control_dependencies([outfeed_enqueue_ops]):
-            return tf.identity(loss)
+            loss_op = tf.identity(loss)
+            loss_out.write(loss_op)
+            return loss_op
 
     return tpu_step
 
@@ -317,8 +320,9 @@ class TrainAndEvalRunner(object):
 
     @tpu_function.on_device_training_loop
     def train_loop():
+      output = tf.TensorArray(size=FLAGS.train_batch_size, dtype=tf.float32, element_shape=[1], infer_shape=True)
       with tf.variable_scope("resnet", reuse=tf.AUTO_REUSE):
-        return tpu.repeat(self.iterations, tpu_step, [_INITIAL_LOSS])
+        return tpu.repeat(self.iterations, tpu_step, [output])
 
     self.train_loop = train_loop
 
