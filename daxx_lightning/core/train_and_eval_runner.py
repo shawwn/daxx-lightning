@@ -154,7 +154,7 @@ class TrainAndEvalRunner(object):
     if cluster_spec:
       self.config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
     self.master = self.tpu_cluster_resolver.get_master()
-    self.init_sess = tf.Session(self.master, config=self.config)
+    self.init_sess = tflex.Session(self.master, config=self.config)
     self.init_sess.run(tpu_init)
 
   def get_host(self, host_id):
