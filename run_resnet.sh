@@ -16,8 +16,8 @@ TPU_INDEX="${TPU_INDEX:-0}"
 tpu="${TPU_NAME:-tpu-v3-${TPU_CORES}-euw4a-${TPU_INDEX}}"
 
 data_dir="gs://danbooru-euw4a/imagenet/out"
-model_dir="gs://danbooru-euw4a/benchmarks/daxx/imagenet/tf-1-15/v3-${TPU_CORES}/results-${i}"
-export_dir="gs://danbooru-euw4a/benchmarks/daxx/imagenet/tf-1-15/v3-${TPU_CORES}/results-${i}"
+model_dir="gs://danbooru-euw4a/benchmarks/daxx/tmp/tf-1-15/v3-${TPU_CORES}/results-${i}"
+export_dir="gs://danbooru-euw4a/benchmarks/daxx/tmp/tf-1-15/v3-${TPU_CORES}/results-${i}"
 save_graphs=True
 
 export NOISY=1
