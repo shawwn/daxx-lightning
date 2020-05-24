@@ -500,6 +500,7 @@ class TrainAndEvalRunner(object):
                 tf.Summary.Value(tag=metric, simple_value=eval_results[metric]))
             tf_summary = tf.Summary(value=list(summaries))
             summary_writer.add_summary(tf_summary, cur_step)
+          summary_writer.flush()
       # MLPerf logging for eval results.
       mlp_log.mlperf_print(
           "eval_accuracy",
