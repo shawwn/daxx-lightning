@@ -218,8 +218,8 @@ def evonorm_s0(inputs,
 
     inputs = tf.cast(inputs, tf.float32)
     if nonlinearity:
-      #groups = num_channels // 2
-      groups = 8
+      groups = num_channels // 2
+      #groups = 8
       assert num_channels % groups == 0
       assert groups <= num_channels
       assert groups > 0
