@@ -108,7 +108,7 @@ class TrainRunner(object):
     with self.init_graph.as_default():
       self.tpu_init = tpu.initialize_system()
       self.tpu_shutdown = tpu.shutdown_system()
-    self.init_sess = tflex.Session(self.master, graph=self.init_graph, config=self.config)
+    self.init_sess = tflex.Session(self.cluster_resolver.get_master(), graph=self.init_graph, config=self.config)
     if 'NO_TPU_INIT' not in os.environ:
       tf.logging.info("initializing TPU...")
       self.init_sess.run(self.tpu_init)
