@@ -26,6 +26,7 @@ import os
 from absl import flags
 import tensorflow as tf
 from . import tflex
+Session = tf.Session
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_function
@@ -108,7 +109,7 @@ class TrainRunner(object):
     with self.init_graph.as_default():
       self.tpu_init = tpu.initialize_system()
       self.tpu_shutdown = tpu.shutdown_system()
-    self.init_sess = tflex.Session(self.cluster_resolver.get_master(), graph=self.init_graph, config=self.config)
+    self.init_sess = Session(self.cluster_resolver.get_master(), graph=self.init_graph, config=self.config)
     if 'NO_TPU_INIT' not in os.environ:
       tf.logging.info("initializing TPU...")
       self.init_sess.run(self.tpu_init)
@@ -190,7 +191,7 @@ class TrainRunner(object):
         self.build_enqueue_ops(input_fn, params, i)
         i += 1
       # Build infeed sesssion
-      self.input_sess = tflex.Session(
+      self.input_sess = Session(
           self.cluster_resolver.get_master(),
           graph=self.input_graph,
           config=self.config)
@@ -238,7 +239,7 @@ class TrainRunner(object):
                          FLAGS.model_dir, "graph.pbtxt")
 
     # Build tpu train model session and initialize graph
-    self.sess = tflex.Session(
+    self.sess = Session(
         self.cluster_resolver.get_master(),
         config=self.config)
     self.sess.run(initializer)

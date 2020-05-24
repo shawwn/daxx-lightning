@@ -29,6 +29,7 @@ import tensorflow as tf
 from . import tflex
 #from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from .tflex import TPUClusterResolver
+Session = tf.Session
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_function
@@ -156,7 +157,7 @@ class TrainAndEvalRunner(object):
     with self.init_graph.as_default():
       self.tpu_init = tpu.initialize_system()
       self.tpu_shutdown = tpu.shutdown_system()
-    self.init_sess = tflex.Session(self.master, graph=self.init_graph, config=self.config)
+    self.init_sess = Session(self.master, graph=self.init_graph, config=self.config)
     if 'NO_TPU_INIT' not in os.environ:
       tf.logging.info("initializing TPU...")
       self.init_sess.run(self.tpu_init)
@@ -328,19 +329,19 @@ class TrainAndEvalRunner(object):
       self.build_enqueue_ops(train_input_fn, params, i)
       i = i + 1
 
-    self.sess = tflex.Session(self.master, graph=self.graph, config=self.config)
+    self.sess = Session(self.master, graph=self.graph, config=self.config)
 
-    self.input_sess = tflex.Session(
+    self.input_sess = Session(
         self.master, graph=self.input_graph, config=self.config)
 
     self.input_sess.run(self.dataset_initializer)
 
-    self.eval_input_sess = tflex.Session(
+    self.eval_input_sess = Session(
         self.master, graph=self.eval_input_graph, config=self.config)
 
     self.eval_input_sess.run(self.eval_dataset_initializer)
 
-    self.eval_output_sess = tflex.Session(
+    self.eval_output_sess = Session(
         self.master, graph=self.eval_output_graph, config=self.config)
 
     with self.graph.as_default():
