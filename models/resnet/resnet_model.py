@@ -186,7 +186,7 @@ def distributed_batch_norm(inputs,
     return outputs
 
 def evonorm_s0(inputs,
-              data_format=None,
+              training=True,
               nonlinearity=True,
               name="batch_normalization",
               scale=True,
@@ -194,48 +194,41 @@ def evonorm_s0(inputs,
               gamma_initializer=None,
               scope=None):
   with tf.variable_scope(scope, name, [inputs], reuse=None):
-    if data_format not in {"NCHW", "NHWC"}:
-      raise ValueError(
-          "Invalid data_format {}. Allowed: NCHW, NHWC.".format(data_format))
-
     inputs = tf.convert_to_tensor(inputs)
-    inputs_dtype = inputs.dtype
     inputs_shape = inputs.get_shape()
-
-    num_channels = inputs.shape[-1 if data_format == "NHWC" else -3].value
+    inputs_dtype = inputs.dtype
+    num_channels = inputs.shape[-1].value
     if num_channels is None:
       raise ValueError("`C` dimension must be known but is None")
 
     inputs_rank = inputs_shape.ndims
     if inputs_rank is None:
       raise ValueError("Inputs %s has undefined rank" % inputs.name)
-    elif inputs_rank not in [2, 4]:
+    elif inputs_rank not in [4]: #[2, 4]:
       raise ValueError(
           "Inputs %s has unsupported rank."
-          " Expected 2 or 4 but got %d" % (inputs.name, inputs_rank))
+          " Expected 4 but got %d" % (inputs.name, inputs_rank))
+          #" Expected 2 or 4 but got %d" % (inputs.name, inputs_rank))
 
-    if inputs_rank == 2:
-      new_shape = [-1, 1, 1, num_channels]
-      if data_format == "NCHW":
-        new_shape = [-1, num_channels, 1, 1]
-      inputs = tf.reshape(inputs, new_shape)
+    # if inputs_rank == 2:
+    #   new_shape = [-1, 1, 1, num_channels]
+    #   if data_format == "NCHW":
+    #     new_shape = [-1, num_channels, 1, 1]
+    #   inputs = tf.reshape(inputs, new_shape)
 
+    inputs = tf.cast(inputs, tf.float32)
     if nonlinearity:
-      v = trainable_variable_ones(num_channels=num_channels)
-      x = tf.cast(inputs, tf.float32)
-      num = x * tf.nn.sigmoid(v * x)
-      outputs = num / group_std(x)
+      v = trainable_variable_ones(shape=[num_channels])
+      num = inputs * tf.nn.sigmoid(v * inputs)
+      outputs = num / group_std(inputs)
     else:
       outputs = inputs
-
-    collections = [tf.GraphKeys.MODEL_VARIABLES,
-                   tf.GraphKeys.GLOBAL_VARIABLES]
 
     if scale:
       gamma = tf.get_variable(
         "gamma",
         [num_channels],
-        collections=collections,
+        dtype=tf.float32,
         initializer=gamma_initializer if gamma_initializer is not None else tf.ones_initializer())
       outputs *= gamma
 
@@ -243,12 +236,11 @@ def evonorm_s0(inputs,
       beta = tf.get_variable(
         "beta",
         [num_channels],
-        collections=collections,
+        dtype=tf.float32,
         initializer=tf.zeros_initializer())
       outputs += beta
 
     outputs = tf.cast(outputs, inputs_dtype)
-
   return outputs
 
 def instance_std(x, eps=1e-5):
@@ -263,8 +255,8 @@ def group_std(x, groups=32, eps=1e-5):
   std = tf.broadcast_to(std, x.shape)
   return tf.reshape(std, [N, H, W, C])
 
-def trainable_variable_ones(num_channels, name="v"):
-  return tf.get_variable(name, shape=[num_channels], initializer=tf.ones_initializer(), dtype=tf.float32)
+def trainable_variable_ones(shape, name="v"):
+  return tf.get_variable(name, shape=shape, initializer=tf.ones_initializer(), dtype=tf.float32)
 
 def batch_norm_relu(inputs,
                     is_training,
@@ -320,9 +312,12 @@ def batch_norm_relu(inputs,
         gamma_initializer=gamma_initializer)
   else:
     tf.logging.info('Using batchnorm evonorm_s0')
+    assert data_format == 'channels_last'
     inputs = evonorm_s0(
         inputs=inputs,
-        data_format='NCHW' if data_format == 'channels_first' else 'NHWC',
+        center=True,
+        scale=True,
+        training=is_training,
         gamma_initializer=gamma_initializer)
 
   if relu:
