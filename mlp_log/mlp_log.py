@@ -82,9 +82,12 @@ def mlperf_print(key, value, stack_offset=0, metadata=None):
           key, value, stack_offset=stack_offset + 1, metadata=metadata))
 
 def mlperf_log(key, value):
-  mlperf_print(key, value)
   import tensorflow as tf
-  if isinstance(value, int) or isinstance(value, float) or tf.is_tensor(value):
+  tf.logging.info('mlperf_log(%r, %r)', key, value)
+  if isinstance(value, int) or isinstance(value, float):
+    mlperf_print(key, value)
+    mlperf_scalar(key, value)
+  elif tf.is_scalar(value):
     mlperf_scalar(key, value)
   return value
 
