@@ -350,7 +350,9 @@ class TrainAndEvalRunner(object):
       self.saver = tf.train.Saver()
 
     def train_eval_thread_fn(sess, train_eval_op):
+      tf.logging.info("Start eval thread")
       sess.run([train_eval_op])
+      tf.logging.info("Finish eval thread")
 
     # Start the just in time compilation of the model function
     self.train_eval_thread = threading.Thread(
@@ -457,9 +459,12 @@ class TrainAndEvalRunner(object):
       # Build infeed sesssion
       # Run infeed session.run calls
       tf.logging.info("Start infeed thread")
-      for _ in range(self.train_steps // self.iterations):
+      for i in range(self.train_steps // self.iterations):
+        tf.logging.info("[%d] Infeed thread enqueue_ops", i)
         self.input_sess.run([self.enqueue_ops])
+        tf.logging.info("[%d] Infeed thread eval_enqueue_ops", i)
         self.eval_input_sess.run([self.eval_enqueue_ops])
+      tf.logging.info("Finished infeed thread")
 
     self.infeed_thread = threading.Thread(target=infeed_thread_fn)
     self.infeed_thread.start()
@@ -545,11 +550,17 @@ class TrainAndEvalRunner(object):
     tf.logging.info("Starting Eval on %d steps batch size %d" %
                     (num_steps, self.eval_batch_size))
 
-    for _ in range(num_steps):
+    for i in range(num_steps):
+      tf.logging.info("Eval step %d", i)
       _ = self.eval_output_sess.run(self.metric_update_ops)
+      tf.logging.info("Eval step %d done", i)
     # Compute eval metrics
+    tf.logging.info("Eval metric value ops")
     session_out = self.eval_output_sess.run(self.metric_value_ops)
-    eval_results["top_1_accuracy"] = session_out["top_1_accuracy"]
+    tf.logging.info("Eval metric value ops done")
+    #eval_results["top_1_accuracy"] = session_out["top_1_accuracy"]
+    for k in session_out.keys():
+      eval_results[k] = session_out[k]
 
     return eval_results
 
