@@ -185,6 +185,84 @@ def distributed_batch_norm(inputs,
     outputs.set_shape(inputs_shape)
     return outputs
 
+def evonorm_s0(inputs,
+              data_format=None,
+              nonlinearity=True,
+              name="evonorm_s0",
+              scale=True,
+              center=True,
+              gamma_initializer=None):
+  with tf.variable_scope(name, values=[inputs]):
+    if data_format not in {"NCHW", "NHWC"}:
+      raise ValueError(
+          "Invalid data_format {}. Allowed: NCHW, NHWC.".format(data_format))
+
+    inputs = tf.convert_to_tensor(inputs)
+    inputs_dtype = inputs.dtype
+    inputs_shape = inputs.get_shape()
+
+    num_channels = inputs.shape[-1 if data_format == "NHWC" else -3].value
+    if num_channels is None:
+      raise ValueError("`C` dimension must be known but is None")
+
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError("Inputs %s has undefined rank" % inputs.name)
+    elif inputs_rank not in [2, 4]:
+      raise ValueError(
+          "Inputs %s has unsupported rank."
+          " Expected 2 or 4 but got %d" % (inputs.name, inputs_rank))
+
+    if inputs_rank == 2:
+      new_shape = [-1, 1, 1, num_channels]
+      if data_format == "NCHW":
+        new_shape = [-1, num_channels, 1, 1]
+      inputs = tf.reshape(inputs, new_shape)
+
+    if nonlinearity:
+      v = trainable_variable_ones(shape=[num_channels])
+      num = inputs * tf.nn.sigmoid(v * inputs)
+      outputs = num / group_std(inputs)
+    else:
+      outputs = inputs
+
+    collections = [tf.GraphKeys.MODEL_VARIABLES,
+                   tf.GraphKeys.GLOBAL_VARIABLES]
+
+    if scale:
+      gamma = tf.get_variable(
+        "gamma",
+        [num_channels],
+        collections=collections,
+        initializer=gamma_initializer if gamma_initializer is not None else tf.ones_initializer())
+      outputs *= gamma
+
+    if center:
+      beta = tf.get_variable(
+        "beta",
+        [num_channels],
+        collections=collections,
+        initializer=tf.zeros_initializer())
+      outputs += beta
+
+    outputs = tf.cast(outputs, inputs_dtype)
+
+  return outputs
+
+def instance_std(x, eps=1e-5):
+  _, var = tf.nn.moments(x, axes=[1, 2], keepdims=True)
+  return tf.sqrt(var + eps)
+
+def group_std(x, groups=32, eps=1e-5):
+  N, H, W, C = x.shape
+  x = tf.reshape(x, [N, H, W, groups, C // groups])
+  _, var = tf.nn.moments(x, [1, 2, 4], keepdims=True)
+  std = tf.sqrt(var + eps)
+  std = tf.broadcast_to(std, x.shape)
+  return tf.reshape(std, [N, H, W, C])
+
+def trainable_variable_ones(shape, name="v"):
+  return tf.get_variable(name, shape=shape, initializer=tf.ones_initializer())
 
 def batch_norm_relu(inputs,
                     is_training,
@@ -217,6 +295,7 @@ def batch_norm_relu(inputs,
 
   if FLAGS.distributed_group_size > 1:
     assert data_format == 'channels_last'
+    tf.logging('Using batchnorm distributed_batch_norm')
     inputs = distributed_batch_norm(
         inputs=inputs,
         decay=BATCH_NORM_DECAY,
@@ -225,7 +304,8 @@ def batch_norm_relu(inputs,
         gamma_initializer=gamma_initializer,
         num_shards=FLAGS.num_cores,
         distributed_group_size=FLAGS.distributed_group_size)
-  else:
+  elif FLAGS.distributed_group_size == 1:
+    tf.logging('Using batchnorm tf.layers.batch_normalization')
     inputs = tf.layers.batch_normalization(
         inputs=inputs,
         axis=axis,
@@ -235,6 +315,12 @@ def batch_norm_relu(inputs,
         scale=True,
         training=is_training,
         fused=True,
+        gamma_initializer=gamma_initializer)
+  else:
+    tf.logging('Using batchnorm evonorm_s0')
+    inputs = evonorm_s0(
+        inputs=inputs,
+        data_format='NCHW' if data_format == 'channels_first' else 'NHWC',
         gamma_initializer=gamma_initializer)
 
   if relu:

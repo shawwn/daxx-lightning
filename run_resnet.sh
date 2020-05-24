@@ -21,6 +21,7 @@ data_dir="${BUCKET}/datasets/imagenet"
 model_dir="${BUCKET}/benchmarks/daxx/${RUN_NAME}/tf-1-15/v3-${TPU_CORES}/results-${i}"
 export_dir="${BUCKET}/benchmarks/daxx/${RUN_NAME}/tf-1-15/v3-${TPU_CORES}/results-${i}"
 save_graphs=True
+no_evonorm="${NO_EVONORM:-1}"
 
 export NOISY=1
 export DEBUG=1
@@ -78,7 +79,7 @@ export DEBUG=1
 
 exec python3 resnet_main.py --data_dir="$data_dir" \
 --output_summaries=True \
---distributed_group_size=1 \
+--distributed_group_size="${no_evonorm}" \
 --enable_lars=True \
 --eval_batch_size=32768 \
 --iterations_per_loop=157 \
