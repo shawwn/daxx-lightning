@@ -245,7 +245,7 @@ class TrainRunner(object):
     self.sess.run(initializer)
 
     # Complete infeed graph generation and session.run calls
-    self.infeed_thread = threading.Thread(target=infeed_thread_fn)
+    self.infeed_thread = threading.Thread(target=infeed_thread_fn, daemon=True)
     self.infeed_thread.start()
 
   def train(self, num_threads=2):
@@ -273,7 +273,7 @@ class TrainRunner(object):
       if checkpoint_threads[thread_id] is not None:
         checkpoint_threads[thread_id].join()
       checkpoint_threads[thread_id] = threading.Thread(
-          target=checkpoint_thread_fn, args=(self.saver, self.sess))
+          target=checkpoint_thread_fn, args=(self.saver, self.sess), daemon=True)
       checkpoint_threads[thread_id].start()
       thread_id += 1
       if thread_id >= num_threads:

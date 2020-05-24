@@ -356,7 +356,7 @@ class TrainAndEvalRunner(object):
 
     # Start the just in time compilation of the model function
     self.train_eval_thread = threading.Thread(
-        target=train_eval_thread_fn, args=(self.sess, self.train_eval_op))
+        target=train_eval_thread_fn, args=(self.sess, self.train_eval_op), daemon=True)
     self.train_eval_thread.start()
 
     # Sleep for JTC to finish
@@ -466,7 +466,7 @@ class TrainAndEvalRunner(object):
         self.eval_input_sess.run([self.eval_enqueue_ops])
       tf.logging.info("Finished infeed thread")
 
-    self.infeed_thread = threading.Thread(target=infeed_thread_fn)
+    self.infeed_thread = threading.Thread(target=infeed_thread_fn, daemon=True)
     self.infeed_thread.start()
 
     # Gather trace for the first few steps.
@@ -517,7 +517,7 @@ class TrainAndEvalRunner(object):
             tf.logging.info("Saving model %d: %s", step, name)
             saver.save(sess, name)
           self.checkpoint_thread = threading.Thread(
-            target=checkpoint_thread_fn, args=(self.saver, self.sess, cur_step))
+            target=checkpoint_thread_fn, args=(self.saver, self.sess, cur_step), daemon=True)
           self.checkpoint_thread.start()
         mlp_log.mlperf_print("run_stop", None, metadata={"status": "success"})
         break
