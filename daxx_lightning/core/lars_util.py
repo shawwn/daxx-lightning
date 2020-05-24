@@ -75,9 +75,9 @@ def poly_rate_schedule(current_epoch,
   if FLAGS.lars_warmup_epochs > 0:
     w_epochs = FLAGS.lars_warmup_epochs
 
-  mlp_log.mlperf_print('opt_base_learning_rate', plr)
-  mlp_log.mlperf_print('opt_learning_rate_warmup_epochs', w_epochs)
-  mlp_log.mlperf_print('lars_opt_end_learning_rate', 0.0001)
+  mlp_log.mlperf_log('opt_base_learning_rate', plr)
+  mlp_log.mlperf_log('opt_learning_rate_warmup_epochs', w_epochs)
+  mlp_log.mlperf_log('lars_opt_end_learning_rate', 0.0001)
 
   wrate = (plr * current_epoch / w_epochs)
   w_steps = (w_epochs * FLAGS.num_train_images // batch_size)
@@ -85,9 +85,9 @@ def poly_rate_schedule(current_epoch,
   global_step = tf.train.get_or_create_global_step()
   decay_steps = tf.maximum(min_step, tf.subtract(global_step, w_steps))
 
-  mlp_log.mlperf_print('lars_opt_learning_rate_decay_steps',
-                       FLAGS.train_steps - w_steps + 1)
-  mlp_log.mlperf_print('lars_opt_learning_rate_decay_poly_power', 2.0)
+  mlp_log.mlperf_log('lars_opt_learning_rate_decay_steps',
+                     FLAGS.train_steps - w_steps + 1)
+  mlp_log.mlperf_log('lars_opt_learning_rate_decay_poly_power', 2.0)
 
   poly_rate = tf.train.polynomial_decay(
       plr,
@@ -102,8 +102,8 @@ def init_lars_optimizer(current_epoch):
   """Initialize the LARS Optimizer."""
 
   lars_epsilon = FLAGS.lars_epsilon
-  mlp_log.mlperf_print('lars_opt_weight_decay', FLAGS.weight_decay)
-  mlp_log.mlperf_print('lars_epsilon', lars_epsilon)
+  mlp_log.mlperf_log('lars_opt_weight_decay', FLAGS.weight_decay)
+  mlp_log.mlperf_log('lars_epsilon', lars_epsilon)
 
   learning_rate = poly_rate_schedule(current_epoch, FLAGS.poly_rate)
   optimizer = tf.contrib.opt.LARSOptimizer(

@@ -567,6 +567,14 @@ class TrainAndEvalRunner(object):
       tf.logging.info("Eval global value ops done")
       for k in session_out.keys():
         eval_results[k] = session_out[k]
+    with self.graph.as_default():
+      mlp_scalars = mlp_log.mlperf_scalars()
+      if len(mlp_scalars) > 0:
+        tf.logging.info("Eval scalars")
+        session_out = self.sess.run(mlp_scalars)
+        tf.logging.info("Eval scalars done")
+        for k in session_out.keys():
+          eval_results[k] = session_out[k]
 
     return eval_results
 

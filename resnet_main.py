@@ -310,7 +310,7 @@ def learning_rate_schedule(current_epoch):
   Returns:
     A scaled `Tensor` for current learning rate.
   """
-  mlp_log.mlperf_print('base_learning_rate', FLAGS.base_learning_rate)
+  mlp_log.mlperf_log('base_learning_rate', FLAGS.base_learning_rate)
   scaled_lr = FLAGS.base_learning_rate * (FLAGS.train_batch_size / 256.0)
 
   decay_rate = (scaled_lr * LR_SCHEDULE[0][0] *
@@ -413,7 +413,7 @@ def resnet_model_fn(features, labels, mode, params):
     current_epoch = (tf.cast(global_step, tf.float32) /
                      steps_per_epoch)
 
-    mlp_log.mlperf_print(
+    mlp_log.mlperf_log(
         'model_bn_span',
         FLAGS.distributed_group_size *
         (FLAGS.train_batch_size // FLAGS.num_cores))
@@ -429,7 +429,7 @@ def resnet_model_fn(features, labels, mode, params):
           learning_rate=learning_rate,
           momentum=FLAGS.momentum,
           use_nesterov=True)
-      mlp_log.mlperf_print('opt_momentum', FLAGS.momentum)
+      mlp_log.mlperf_log('opt_momentum', FLAGS.momentum)
     if FLAGS.use_tpu:
       # When using TPU, wrap the optimizer with CrossShardOptimizer which
       # handles synchronization details between different TPU cores. To the
@@ -441,6 +441,10 @@ def resnet_model_fn(features, labels, mode, params):
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
       train_op = optimizer.minimize(loss, global_step)
+
+    mlp_log.mlperf_log('learning_rate', learning_rate)
+    mlp_log.mlperf_log('current_epoch', current_epoch)
+    mlp_log.mlperf_log('global_step', global_step)
 
     if not FLAGS.skip_host_call:
       def host_call_fn(gs, loss, lr, ce):
@@ -528,10 +532,7 @@ def resnet_model_fn(features, labels, mode, params):
           'top_5_accuracy': top_5_accuracy,
       }
 
-    eval_metrics = (metric_fn, [labels, logits], {
-      'learning_rate': learning_rate,
-      'current_epoch': current_epoch,
-    })
+    eval_metrics = (metric_fn, [labels, logits])
 
   return tf.contrib.tpu.TPUEstimatorSpec(
       mode=mode,
@@ -620,7 +621,7 @@ def main(unused_argv):
     save_checkpoints_steps = None
   else:
     save_checkpoints_steps = max(100, FLAGS.iterations_per_loop)
-  mlp_log.mlperf_print('global_batch_size', FLAGS.train_batch_size)
+  mlp_log.mlperf_log('global_batch_size', FLAGS.train_batch_size)
   if not FLAGS.use_train_runner:
     config = tf.contrib.tpu.RunConfig(
         cluster=tpu_cluster_resolver,
@@ -696,8 +697,8 @@ def main(unused_argv):
     mlp_log.mlperf_print('init_stop', None)
     mlp_log.mlperf_print('run_start', None)
 
-  mlp_log.mlperf_print('num_train_examples', FLAGS.num_train_images)
-  mlp_log.mlperf_print('num_eval_examples', FLAGS.num_eval_images)
+  mlp_log.mlperf_log('num_train_examples', FLAGS.num_train_images)
+  mlp_log.mlperf_log('num_eval_examples', FLAGS.num_eval_images)
 
   steps_per_epoch = FLAGS.num_train_images // FLAGS.train_batch_size
   eval_steps = int(math.ceil(FLAGS.num_eval_images / FLAGS.eval_batch_size))

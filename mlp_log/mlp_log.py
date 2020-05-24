@@ -80,3 +80,36 @@ def mlperf_print(key, value, stack_offset=0, metadata=None):
   LOGGER.info(
       mlperf_format(
           key, value, stack_offset=stack_offset + 1, metadata=metadata))
+
+def mlperf_log(key, value):
+  mlperf_print(key, value)
+  import tensorflow as tf
+  if isinstance(value, int) or isinstance(value, float) or tf.is_tensor(value):
+    mlperf_scalar(key, value)
+  return value
+
+_MLPERF_SCALARS='mlperf_scalars'
+
+def _mlperf_name(scalar):
+  return scalar.name.split('..')[1]
+
+def mlperf_scalar(key, value, collection=_MLPERF_SCALARS):
+  import tensorflow as tf
+  name = '..{}..'.format(key)
+  scalars = tf.get_collection_ref(collection)
+  existing = [x for x in scalars if name in x.name]
+  for scalar in existing:
+    tf.logging.warn('mlperf_log: replacing duplicate %s', key)
+    scalars.remove(scalar)
+  tf.add_to_collection(collection, tf.identity(value, name=name))
+  return value
+
+def mlperf_scalars(collection=_MLPERF_SCALARS):
+  r = {}
+  import tensorflow as tf
+  scalars = tf.get_collection_ref(collection)
+  for scalar in scalars:
+    name = _mlperf_name(scalar)
+    r[name] = scalar
+  return r
+
