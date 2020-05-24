@@ -221,8 +221,9 @@ def evonorm_s0(inputs,
 
     if nonlinearity:
       v = trainable_variable_ones(shape=[num_channels])
-      num = inputs * tf.nn.sigmoid(v * inputs)
-      outputs = num / group_std(inputs)
+      x = tf.cast(inputs, tf.float32)
+      num = x * tf.nn.sigmoid(v * x)
+      outputs = num / group_std(x)
     else:
       outputs = inputs
 
