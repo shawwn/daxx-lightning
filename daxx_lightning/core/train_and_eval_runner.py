@@ -498,7 +498,7 @@ class TrainAndEvalRunner(object):
 
     @on_device_train_and_eval_loops
     def train_eval_loop(replica_id):
-      # `tpu.split_compile_and_shard()` splits and passes input for each
+      # `tpu_ops.split_compile_and_shard()` splits and passes input for each
       # replica as an array. As so, correctly reshape the input to be a
       # scalar.
       replica_id = array_ops.reshape(replica_id, [])
@@ -533,7 +533,7 @@ class TrainAndEvalRunner(object):
       replica_id_inputs.append([constant_op.constant(i) for i in range(self._ctx.num_replicas)])
 
       with tf.variable_scope("resnet", reuse=True):
-        (self.compile_op, self.train_eval_op,) = tpu.split_compile_and_shard(
+        (self.compile_op, self.train_eval_op,) = tpu_ops.split_compile_and_shard(
         #self.compile_op = tf.no_op()
         #(self.train_eval_op,) = tpu.shard(
             train_eval_loop,
