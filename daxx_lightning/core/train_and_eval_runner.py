@@ -577,6 +577,12 @@ class TrainAndEvalRunner(object):
         for k in session_out.keys():
           eval_results[k] = session_out[k]
 
+    for k in mlp_log.mlperf_constants.keys():
+      eval_results[k] = mlp_log.mlperf_constants[k]
+
+    for k, v in eval_results.items():
+      tf.logging.info('eval_results[%r] = %r', k, v)
+
     return eval_results
 
   def shutdown(self):
