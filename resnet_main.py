@@ -796,10 +796,10 @@ def main(unused_argv):
               async_checkpoint.AsyncCheckpointSaverHook(
                   checkpoint_dir=FLAGS.model_dir,
                   save_steps=max(100, steps_per_epoch * 4)))
-          resnet_classifier.train(
-              input_fn=imagenet_train.input_fn,
-              max_steps=FLAGS.train_steps,
-              hooks=hooks)
+        resnet_classifier.train(
+            input_fn=imagenet_train.input_fn,
+            max_steps=FLAGS.train_steps,
+            hooks=hooks)
     else:
       current_step = estimator._load_global_step_from_checkpoint_dir(FLAGS.model_dir)  # pylint: disable=protected-access,line-too-long
       steps_per_epoch = FLAGS.num_train_images // FLAGS.train_batch_size
