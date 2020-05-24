@@ -392,10 +392,6 @@ class TrainAndEvalRunner(object):
 
     tf.logging.info("TrainAndEvalRunner: initialize method")
 
-    with self.graph.as_default():
-      self.global_step_var = training_util.get_or_create_global_step()
-      self.iterations_per_loop_var = tpu_estimator._create_or_get_iterations_per_loop()
-
     self.build_enqueue_ops(train_input_fn, params, 0)
 
     # Start the build of the model
@@ -408,9 +404,12 @@ class TrainAndEvalRunner(object):
 
     @tpu_function.on_device_training_loop
     def multi_tpu_train_steps_on_single_shard():
+      #global_step_var = training_util.get_or_create_global_step()
+      #iterations_per_loop_var = tpu_estimator._create_or_get_iterations_per_loop()
+      iterations_per_loop_var = tf.constant(self.iterations, dtype=tf.int32, shape=(), name="iterations_per_loop")
       with tf.variable_scope("resnet", reuse=tf.AUTO_REUSE):
         outputs = training_loop.while_loop(
-          lambda i, loss: i < self.iterations_per_loop_var,
+          lambda i, loss: i < iterations_per_loop_var,
           lambda i, loss: [i + 1, tpu_step(i)],
           inputs=[0, _INITIAL_LOSS])
         return outputs[1:]
@@ -446,8 +445,8 @@ class TrainAndEvalRunner(object):
       self.sess.run(tf.global_variables_initializer())
       logging.info("tf.local_variables_initializer()...")
       self.sess.run(tf.local_variables_initializer())
-      logging.info("self.iterations_per_loop_var.load(%r)...", self.iterations)
-      self.iterations_per_loop_var.load(self.iterations, session=self.sess)
+      #logging.info("self.iterations_per_loop_var.load(%r)...", self.iterations)
+      #self.iterations_per_loop_var.load(self.iterations, session=self.sess)
       self.saver = tf.train.Saver()
 
     def train_eval_thread_fn(sess, train_eval_op):
