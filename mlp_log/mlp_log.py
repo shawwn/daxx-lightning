@@ -87,7 +87,7 @@ def mlperf_log(key, value):
   if isinstance(value, int) or isinstance(value, float):
     mlperf_print(key, value)
     mlperf_scalar(key, value)
-  elif tf.is_scalar(value):
+  elif tf.is_tensor(value):
     mlperf_scalar(key, value)
   return value
 
