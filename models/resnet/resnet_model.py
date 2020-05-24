@@ -218,11 +218,12 @@ def evonorm_s0(inputs,
 
     inputs = tf.cast(inputs, tf.float32)
     if nonlinearity:
-      groups = 8
+      groups = num_channels // 2
       assert num_channels % groups == 0
       assert groups <= num_channels
+      assert groups > 0
       v = trainable_variable_ones(shape=[num_channels])
-      num = inputs * tf.nn.sigmoid(v * inputs)
+      num = inputs * tf.sigmoid(v * inputs)
       outputs = num / group_std(inputs, groups=groups)
     else:
       outputs = inputs
@@ -232,33 +233,56 @@ def evonorm_s0(inputs,
         gamma_initializer = tf.ones_initializer()
       gamma = tf.get_variable(
         "gamma",
-        [num_channels],
+        [1, 1, 1, num_channels],
         dtype=tf.float32,
-        initializer=gamma_initializer)
+        initializer=gamma_initializer,
+        trainable=True)
       outputs *= gamma
 
     if center:
       beta = tf.get_variable(
         "beta",
-        [num_channels],
+        [1, 1, 1, num_channels],
         dtype=tf.float32,
-        initializer=tf.zeros_initializer())
+        initializer=tf.zeros_initializer(),
+        trainable=True)
       outputs += beta
 
     outputs = tf.cast(outputs, inputs_dtype)
   return outputs
 
-def instance_std(x, eps=1e-5):
+# def instance_std(x, eps=1e-5):
+#   _, var = tf.nn.moments(x, axes=[1, 2], keepdims=True)
+#   return tf.sqrt(var + eps)
+#
+# def group_std(x, groups=32, eps=1e-5):
+#   N, H, W, C = x.shape
+#   x = tf.reshape(x, [N, H, W, groups, C // groups])
+#   _, var = tf.nn.moments(x, [1, 2, 4], keepdims=True)
+#   std = tf.sqrt(var + eps)
+#   std = tf.broadcast_to(std, x.shape)
+#   return tf.reshape(std, [N, H, W, C])
+
+DEFAULT_EPSILON_VALUE = 1e-5
+
+def instance_std(x, eps=DEFAULT_EPSILON_VALUE):
   _, var = tf.nn.moments(x, axes=[1, 2], keepdims=True)
   return tf.sqrt(var + eps)
 
-def group_std(x, groups=32, eps=1e-5):
-  N, H, W, C = x.shape
-  x = tf.reshape(x, [N, H, W, groups, C // groups])
-  _, var = tf.nn.moments(x, [1, 2, 4], keepdims=True)
+def group_std(inputs, groups=32, eps=DEFAULT_EPSILON_VALUE, axis=-1):
+  groups = min(inputs.shape[axis], groups)
+
+  input_shape = tf.shape(inputs)
+  group_shape = [input_shape[i] for i in range(4)]
+  group_shape[axis] = input_shape[axis] // groups
+  group_shape.insert(axis, groups)
+  group_shape = tf.stack(group_shape)
+  grouped_inputs = tf.reshape(inputs, group_shape)
+  _, var = tf.nn.moments(grouped_inputs, [1, 2, 4], keepdims=True)
+
   std = tf.sqrt(var + eps)
-  std = tf.broadcast_to(std, x.shape)
-  return tf.reshape(std, [N, H, W, C])
+  std = tf.broadcast_to(std, tf.shape(grouped_inputs))
+  return tf.reshape(std, input_shape)
 
 def trainable_variable_ones(shape, name="v", initializer=None):
   if initializer is None:
@@ -326,6 +350,7 @@ def batch_norm_relu(inputs,
         scale=True,
         training=is_training,
         gamma_initializer=gamma_initializer)
+    relu = False
 
   if relu:
     inputs = tf.nn.relu(inputs)
