@@ -317,7 +317,7 @@ def batch_norm_relu(inputs,
         fused=True,
         gamma_initializer=gamma_initializer)
   else:
-    tf.logging('Using batchnorm evonorm_s0')
+    tf.logging.info('Using batchnorm evonorm_s0')
     inputs = evonorm_s0(
         inputs=inputs,
         data_format='NCHW' if data_format == 'channels_first' else 'NHWC',
