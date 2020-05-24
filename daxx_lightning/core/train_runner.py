@@ -110,6 +110,9 @@ class TrainRunner(object):
     if 'NO_TPU_INIT' not in os.environ:
       tf.logging.info("initializing TPU...")
       self.init_sess.run(self.tpu_init)
+      if 'EXIT_AFTER_TPU_INIT' in os.environ:
+        import posix
+        posix._exit(0)
 
   def device_for_host(self, task=0, cpu=0):
     job_name = FLAGS.tpu_job_name or "tpu_worker"

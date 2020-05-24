@@ -158,6 +158,9 @@ class TrainAndEvalRunner(object):
     if 'NO_TPU_INIT' not in os.environ:
       tf.logging.info("initializing TPU...")
       self.init_sess.run(self.tpu_init)
+      if 'EXIT_AFTER_TPU_INIT' in os.environ:
+        import posix
+        posix._exit(0)
 
   def get_host(self, host_id):
     if self.master in ("", "local"):
