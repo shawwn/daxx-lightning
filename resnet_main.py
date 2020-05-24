@@ -528,7 +528,10 @@ def resnet_model_fn(features, labels, mode, params):
           'top_5_accuracy': top_5_accuracy,
       }
 
-    eval_metrics = (metric_fn, [labels, logits])
+    eval_metrics = (metric_fn, [labels, logits], {
+      'learning_rate': learning_rate,
+      'current_epoch': current_epoch,
+    })
 
   return tf.contrib.tpu.TPUEstimatorSpec(
       mode=mode,

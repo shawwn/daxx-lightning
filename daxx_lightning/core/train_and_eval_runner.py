@@ -561,6 +561,12 @@ class TrainAndEvalRunner(object):
     #eval_results["top_1_accuracy"] = session_out["top_1_accuracy"]
     for k in session_out.keys():
       eval_results[k] = session_out[k]
+    if len(self.eval_metrics) >= 3:
+      tf.logging.info("Eval global value ops")
+      session_out = self.eval_output_sess.run(self.eval_metrics[2])
+      tf.logging.info("Eval global value ops done")
+      for k in session_out.keys():
+        eval_results[k] = session_out[k]
 
     return eval_results
 
