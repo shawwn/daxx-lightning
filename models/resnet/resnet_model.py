@@ -218,18 +218,23 @@ def evonorm_s0(inputs,
 
     inputs = tf.cast(inputs, tf.float32)
     if nonlinearity:
+      groups = 8
+      assert num_channels % groups == 0
+      assert groups <= num_channels
       v = trainable_variable_ones(shape=[num_channels])
       num = inputs * tf.nn.sigmoid(v * inputs)
-      outputs = num / group_std(inputs)
+      outputs = num / group_std(inputs, groups=groups)
     else:
       outputs = inputs
 
     if scale:
+      if gamma_initializer is None:
+        gamma_initializer = tf.ones_initializer()
       gamma = tf.get_variable(
         "gamma",
         [num_channels],
         dtype=tf.float32,
-        initializer=tf.ones_initializer())
+        initializer=gamma_initializer)
       outputs *= gamma
 
     if center:
@@ -255,8 +260,10 @@ def group_std(x, groups=32, eps=1e-5):
   std = tf.broadcast_to(std, x.shape)
   return tf.reshape(std, [N, H, W, C])
 
-def trainable_variable_ones(shape, name="v"):
-  return tf.get_variable(name, shape=shape, initializer=tf.ones_initializer(), dtype=tf.float32)
+def trainable_variable_ones(shape, name="v", initializer=None):
+  if initializer is None:
+    initializer = tf.ones_initializer()
+  return tf.get_variable(name, shape=shape, initializer=initializer, dtype=tf.float32)
 
 def batch_norm_relu(inputs,
                     is_training,
