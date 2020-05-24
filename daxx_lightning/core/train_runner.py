@@ -21,6 +21,7 @@ from __future__ import print_function
 import math
 import threading
 import time
+import os
 
 from absl import flags
 import tensorflow as tf
@@ -91,8 +92,6 @@ class TrainRunner(object):
       train_steps = iterations * int(math.ceil(train_steps / iterations))
     self.train_steps = train_steps
     self.input_graph = tf.Graph()
-    tpu_init = [tpu.initialize_system()]
-    self.tpu_shutdown = tpu.shutdown_system()
     self.cluster_resolver = tflex.TPUClusterResolver(
         FLAGS.tpu or FLAGS.master,
         zone=FLAGS.tpu_zone,
@@ -106,7 +105,11 @@ class TrainRunner(object):
     if cluster_spec:
       self.config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
     self.init_sess = tflex.Session(self.cluster_resolver.get_master(), config=self.config)
-    self.init_sess.run(tpu_init)
+    self.tpu_init = tpu.initialize_system()
+    self.tpu_shutdown = tpu.shutdown_system()
+    if 'NO_TPU_INIT' not in os.environ:
+      tf.logging.info("initializing TPU...")
+      self.init_sess.run(self.tpu_init)
 
   def device_for_host(self, task=0, cpu=0):
     job_name = FLAGS.tpu_job_name or "tpu_worker"
@@ -282,4 +285,6 @@ class TrainRunner(object):
         checkpoint_threads[i] = None
 
   def shutdown(self):
-    self.init_sess.run(self.tpu_shutdown)
+    if 'NO_TPU_INIT' not in os.environ:
+      tf.logging.info("Shutting down TPU...")
+      self.init_sess.run(self.tpu_shutdown)

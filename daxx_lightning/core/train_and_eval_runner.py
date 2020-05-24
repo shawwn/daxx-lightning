@@ -137,8 +137,6 @@ class TrainAndEvalRunner(object):
     self.max_train_iterations = self.train_steps // iterations
     self.eval_steps = int(eval_steps)
     self.eval_batch_size = FLAGS.eval_batch_size
-    tpu_init = [tpu.initialize_system()]
-    self.tpu_shutdown = tpu.shutdown_system()
     self.tpu_cluster_resolver = TPUClusterResolver(
         FLAGS.tpu or FLAGS.master,
         zone=FLAGS.tpu_zone,
@@ -155,7 +153,11 @@ class TrainAndEvalRunner(object):
       self.config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
     self.master = self.tpu_cluster_resolver.get_master()
     self.init_sess = tflex.Session(self.master, config=self.config)
-    self.init_sess.run(tpu_init)
+    self.tpu_init = tpu.initialize_system()
+    self.tpu_shutdown = tpu.shutdown_system()
+    if 'NO_TPU_INIT' not in os.environ:
+      tf.logging.info("initializing TPU...")
+      self.init_sess.run(self.tpu_init)
 
   def get_host(self, host_id):
     if self.master in ("", "local"):
@@ -552,5 +554,6 @@ class TrainAndEvalRunner(object):
     if self.checkpoint_thread is not None:
       self.checkpoint_thread.join()
     self.sess.close()
-    tf.logging.info("Shutting down TPU...")
-    self.init_sess.run(self.tpu_shutdown)
+    if 'NO_TPU_INIT' not in os.environ:
+      tf.logging.info("Shutting down TPU...")
+      self.init_sess.run(self.tpu_shutdown)
