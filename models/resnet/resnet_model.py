@@ -229,7 +229,7 @@ def evonorm_s0(inputs,
         "gamma",
         [num_channels],
         dtype=tf.float32,
-        initializer=gamma_initializer if gamma_initializer is not None else tf.ones_initializer())
+        initializer=tf.ones_initializer())
       outputs *= gamma
 
     if center:
