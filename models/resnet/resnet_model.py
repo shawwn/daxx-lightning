@@ -297,7 +297,7 @@ def batch_norm_relu(inputs,
 
   if FLAGS.distributed_group_size > 1:
     assert data_format == 'channels_last'
-    tf.logging('Using batchnorm distributed_batch_norm')
+    tf.logging.info('Using batchnorm distributed_batch_norm')
     inputs = distributed_batch_norm(
         inputs=inputs,
         decay=BATCH_NORM_DECAY,
@@ -307,7 +307,7 @@ def batch_norm_relu(inputs,
         num_shards=FLAGS.num_cores,
         distributed_group_size=FLAGS.distributed_group_size)
   elif FLAGS.distributed_group_size == 1:
-    tf.logging('Using batchnorm tf.layers.batch_normalization')
+    tf.logging.info('Using batchnorm tf.layers.batch_normalization')
     inputs = tf.layers.batch_normalization(
         inputs=inputs,
         axis=axis,
