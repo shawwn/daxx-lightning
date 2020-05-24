@@ -23,6 +23,7 @@ import math
 import os
 import threading
 import time
+import contextlib
 from absl import flags
 from absl import logging
 from six.moves import queue as Queue
@@ -464,6 +465,16 @@ class TrainAndEvalRunner(object):
     ## Sleep for JTC to finish
     #time.sleep(60)
 
+  @contextlib.contextmanager
+  def with_mode(self, mode):
+    prev_ctx = self._ctx
+    try:
+      with prev_ctx.with_mode(mode) as ctx:
+        self._ctx = ctx
+        yield
+    finally:
+      self._ctx = prev_ctx
+
   def initialize_eval(self, params, eval_input_fn, model_fn):
     """Initialize eval."""
 
@@ -514,7 +525,7 @@ class TrainAndEvalRunner(object):
         dequeue_ops[j] = tf.concat(dequeue_ops[j], axis=0)
       return dequeue_ops
 
-    with self.graph.as_default():
+    with self.graph.as_default(), self.with_mode(tf.estimator.ModeKeys.TRAIN):
       # Add input that represents id for each replica in sync so that
       # _TPUEstimatorReplicaContext can be correctly entered during
       # replicated computation.
@@ -529,12 +540,12 @@ class TrainAndEvalRunner(object):
             inputs=replica_id_inputs,
             num_shards=self._ctx.num_replicas,
             outputs_from_all_shards=False,
-            device_assignment = self._ctx.device_assignment)
+            device_assignment=self._ctx.device_assignment)
 
         graph_io.write_graph(tf.Graph().as_graph_def(add_shapes=True),
                              FLAGS.model_dir, "graph.pbtxt")
 
-    with self.eval_output_graph.as_default():
+    with self.eval_output_graph.as_default(), self.with_mode(tf.estimator.ModeKeys.EVAL):
       with tf.variable_scope("resnet", reuse=True):
         for i in range(0, self.num_hosts):
           host_dequeue_ops = create_dequeue_ops(i)
