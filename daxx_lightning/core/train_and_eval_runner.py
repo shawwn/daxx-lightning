@@ -24,6 +24,7 @@ import os
 import threading
 import time
 from absl import flags
+from absl import logging
 from six.moves import queue as Queue
 import tensorflow as tf
 from . import tflex
@@ -33,6 +34,22 @@ Session = tf.Session
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_function
+from tensorflow.python.tpu import tpu as tpu_ops
+from tensorflow.python.tpu import training_loop
+from tensorflow.python.tpu import tensor_tracer
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.core.protobuf.tpu import compilation_result_pb2 as tpu_compilation_result
+from tensorflow.compiler.tf2xla.python import xla
+from tensorflow_estimator.python.estimator.tpu import tpu_estimator
+from tensorflow_estimator.python.estimator.tpu import tpu_context
+from tensorflow_estimator.python.estimator import model_fn as model_fn_lib
+from tensorflow.python.framework import ops
+from tensorflow.python.training import training_util
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import init_ops
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import constant_op
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.data.util import nest as data_nest
 from tensorflow.python.framework import graph_io
@@ -43,6 +60,18 @@ FLAGS = flags.FLAGS
 _INITIAL_LOSS = 1e7
 _STOP = -1
 
+
+def _assertCompilationSucceeded(result):
+  if result is None:
+    result = ''
+  proto = tpu_compilation_result.CompilationResultProto()
+  proto.ParseFromString(result)
+  if proto.status_error_message:
+    logging.error('Compilation failed: {}'.format(proto.status_error_message))
+    return False
+  else:
+    logging.info('Compilation succeeded')
+    return True
 
 # Decorator function for tpu computation func that was passed to tpu.rewrite()
 # if there are embedded train and eval loops in this func, trace tools will
@@ -102,7 +131,7 @@ def _profiler_callback(comment, session_id):
 class TrainAndEvalRunner(object):
   """Remove init overheads in TPU Estimator via direct session.run calls."""
 
-  def __init__(self, iterations, train_steps, eval_steps):
+  def __init__(self, iterations, train_steps, eval_steps, host_call_every=None):
     tf.logging.info("TrainAndEvalRunner: constructor")
     self.feature_structure = {}
     self.eval_feature_structure = {}
@@ -139,6 +168,11 @@ class TrainAndEvalRunner(object):
     self.max_train_iterations = self.train_steps // iterations
     self.eval_steps = int(eval_steps)
     self.eval_batch_size = FLAGS.eval_batch_size
+    if host_call_every is None:
+      host_call_every = FLAGS.experimental_host_call_every_n_steps
+    if host_call_every is None:
+      host_call_every = 1
+    self.host_call_every_steps = host_call_every
     self.tpu_cluster_resolver = TPUClusterResolver(
         FLAGS.tpu or FLAGS.master,
         zone=FLAGS.tpu_zone,
@@ -150,6 +184,14 @@ class TrainAndEvalRunner(object):
             rewrite_options=rewriter_config_pb2.RewriterConfig(
                 disable_meta_optimizer=True)),
         isolate_session_state=True)
+    self._ctx = tpu_context._InternalTPUContext(
+      tf.contrib.tpu.RunConfig(
+        cluster=self.tpu_cluster_resolver,
+        tpu_config=tf.contrib.tpu.TPUConfig()),
+      FLAGS.train_batch_size,
+      FLAGS.eval_batch_size,
+      None,
+      use_tpu=True)
     cluster_spec = self.tpu_cluster_resolver.cluster_spec()
     if cluster_spec:
       self.config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
@@ -253,9 +295,11 @@ class TrainAndEvalRunner(object):
   def get_tpu_step(self, mparams, model_fn, is_training=True):
     """Get the TPU graph generation function."""
 
-    def tpu_step(loss):
+    host_call = tpu_estimator._OutfeedHostCall(
+        self._ctx, outfeed_every_n_steps=self.host_call_every_steps)
+
+    def tpu_step(step):
       """Generate the TPU graph."""
-      del loss
       if is_training:
         values = self.infeed_queue[0].generate_dequeue_op(tpu_device=0)
         unflattened_inputs = data_nest.pack_sequence_as(self.feature_structure,
@@ -271,9 +315,48 @@ class TrainAndEvalRunner(object):
         estimator_spec = model_fn(features, labels, tf.estimator.ModeKeys.TRAIN,
                                   mparams)
         loss, train_op = estimator_spec.loss, estimator_spec.train_op
+
+        if tensor_tracer.TensorTracer.is_enabled():
+          tt = tensor_tracer.TensorTracer()
+          loss = tt.trace_tpu(ops.get_default_graph(), loss, train_op,
+                              self._ctx.num_replicas)
+          tracer_host_call = tt.host_call_deps_and_fn()
+        else:
+          tracer_host_call = {}
+
         with tf.device(device_for_tpu_core(self.get_host(0))):
-          with tf.control_dependencies([train_op]):
-            return tf.identity(loss)
+          # with tf.control_dependencies([train_op]):
+          #   return tf.identity(loss)
+          # We must run train_op to update the variables prior to running the
+          # outfeed.
+          with ops.control_dependencies([train_op]):
+            host_call_outfeed_ops = []
+            host_call_fn, host_call_args = None, []
+
+            if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
+                    and estimator_spec.host_call is not None):
+              host_call_fn, host_call_args = estimator_spec.host_call
+
+            if host_call_fn:
+              # Ignore dummy hostcalls (no arguments)
+              if host_call_args:
+                tracer_host_call.update({'host_call': estimator_spec.host_call})
+                host_call.record(tracer_host_call)
+                host_call_outfeed_ops = host_call.create_enqueue_op(step)
+            else:
+              # Create a host call for the loss to track execution progress
+              # Without this, we don't have any indication of the state of the
+              # TPU program.
+              tracer_host_call.update({
+                'host_call': (lambda loss_t: loss_t,
+                              [array_ops.reshape(loss, [1])])
+              })
+              host_call.record(tracer_host_call)
+              host_call_outfeed_ops = host_call.create_enqueue_op(step)
+
+            with ops.control_dependencies(host_call_outfeed_ops):
+              return array_ops.identity(loss)
+
       else:
         estimator_spec = model_fn(features, labels, tf.estimator.ModeKeys.EVAL,
                                   mparams)
@@ -308,17 +391,30 @@ class TrainAndEvalRunner(object):
 
     tf.logging.info("TrainAndEvalRunner: initialize method")
 
+    with self.graph.as_default():
+      self.global_step_var = training_util.get_or_create_global_step()
+      self.iterations_per_loop_var = tpu_estimator._create_or_get_iterations_per_loop()
+
     self.build_enqueue_ops(train_input_fn, params, 0)
 
     # Start the build of the model
     tpu_step = self.get_tpu_step(params, model_fn)
 
-    @tpu_function.on_device_training_loop
-    def train_loop():
-      with tf.variable_scope("resnet", reuse=tf.AUTO_REUSE):
-        return tpu.repeat(self.iterations, tpu_step, [_INITIAL_LOSS])
+    # @tpu_function.on_device_training_loop
+    # def train_loop():
+    #   with tf.variable_scope("resnet", reuse=tf.AUTO_REUSE):
+    #     return tpu.repeat(self.iterations, tpu_step, [_INITIAL_LOSS])
 
-    self.train_loop = train_loop
+    @tpu_function.on_device_training_loop
+    def multi_tpu_train_steps_on_single_shard():
+      with tf.variable_scope("resnet", reuse=tf.AUTO_REUSE):
+        outputs = training_loop.while_loop(
+          lambda i, loss: i < self.iterations_per_loop_var,
+          lambda i, loss: [i + 1, tpu_step(i)],
+          inputs=[0, _INITIAL_LOSS])
+        return outputs[1:]
+
+    self.train_loop = multi_tpu_train_steps_on_single_shard
 
     # Build tpu train model session and initialize graph
     self.initialize_eval(params, eval_input_fn, model_fn)
@@ -345,8 +441,12 @@ class TrainAndEvalRunner(object):
         self.master, graph=self.eval_output_graph, config=self.config)
 
     with self.graph.as_default():
+      logging.info("tf.global_variables_initializer()...")
       self.sess.run(tf.global_variables_initializer())
+      logging.info("tf.local_variables_initializer()...")
       self.sess.run(tf.local_variables_initializer())
+      logging.info("self.iterations_per_loop_var.load(%r)...", self.iterations)
+      self.iterations_per_loop_var.load(self.iterations, session=self.sess)
       self.saver = tf.train.Saver()
 
     def train_eval_thread_fn(sess, train_eval_op):
@@ -355,12 +455,14 @@ class TrainAndEvalRunner(object):
       tf.logging.info("Finish eval thread")
 
     # Start the just in time compilation of the model function
+    logging.info("Compiling...")
+    _assertCompilationSucceeded(self.sess.run(self.compile_op))
     self.train_eval_thread = threading.Thread(
         target=train_eval_thread_fn, args=(self.sess, self.train_eval_op), daemon=True)
     self.train_eval_thread.start()
 
-    # Sleep for JTC to finish
-    time.sleep(60)
+    ## Sleep for JTC to finish
+    #time.sleep(60)
 
   def initialize_eval(self, params, eval_input_fn, model_fn):
     """Initialize eval."""
@@ -384,9 +486,14 @@ class TrainAndEvalRunner(object):
         return eval_loop()
 
     @on_device_train_and_eval_loops
-    def train_eval_loop():
-      return tpu.repeat(self.max_train_iterations, train_eval_step,
-                        [_INITIAL_LOSS])
+    def train_eval_loop(replica_id):
+      # `tpu.split_compile_and_shard()` splits and passes input for each
+      # replica as an array. As so, correctly reshape the input to be a
+      # scalar.
+      replica_id = array_ops.reshape(replica_id, [])
+      with tpu_context._TPUEstimatorReplicaContext(replica_id):  # pylint: disable=protected-access
+        return tpu.repeat(self.max_train_iterations, train_eval_step,
+                          [_INITIAL_LOSS])
 
     def create_dequeue_ops(host_id):
       """Create deque ops graph function."""
@@ -408,12 +515,21 @@ class TrainAndEvalRunner(object):
       return dequeue_ops
 
     with self.graph.as_default():
+      # Add input that represents id for each replica in sync so that
+      # _TPUEstimatorReplicaContext can be correctly entered during
+      # replicated computation.
+      replica_id_inputs = []
+      replica_id_inputs.append([constant_op.constant(i) for i in range(self._ctx.num_replicas)])
+
       with tf.variable_scope("resnet", reuse=True):
-        (self.train_eval_op,) = tpu.shard(
+        (self.compile_op, self.train_eval_op,) = tpu.split_compile_and_shard(
+        #self.compile_op = tf.no_op()
+        #(self.train_eval_op,) = tpu.shard(
             train_eval_loop,
-            inputs=[],
-            num_shards=FLAGS.num_cores,
-            outputs_from_all_shards=False)
+            inputs=replica_id_inputs,
+            num_shards=self._ctx.num_replicas,
+            outputs_from_all_shards=False,
+            device_assignment = self._ctx.device_assignment)
 
         graph_io.write_graph(tf.Graph().as_graph_def(add_shapes=True),
                              FLAGS.model_dir, "graph.pbtxt")
