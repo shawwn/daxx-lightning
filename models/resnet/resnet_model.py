@@ -188,7 +188,8 @@ def distributed_batch_norm(inputs,
 def evonorm_s0(inputs,
               training=True,
               nonlinearity=True,
-              name="batch_normalization",
+              #name="batch_normalization",
+              name="evonorm_s0",
               scale=True,
               center=True,
               gamma_initializer=None,
@@ -350,7 +351,8 @@ def batch_norm_relu(inputs,
         center=True,
         scale=True,
         training=is_training,
-        gamma_initializer=gamma_initializer)
+        gamma_initializer=None)
+        #gamma_initializer=gamma_initializer)
     relu = False
 
   if relu:
