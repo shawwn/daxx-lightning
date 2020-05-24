@@ -262,7 +262,7 @@ def group_std(x, groups=32, eps=1e-5):
   return tf.reshape(std, [N, H, W, C])
 
 def trainable_variable_ones(shape, name="v"):
-  return tf.get_variable(name, shape=shape, initializer=tf.ones_initializer())
+  return tf.get_variable(name, shape=shape, initializer=tf.ones_initializer(), dtype=tf.float32)
 
 def batch_norm_relu(inputs,
                     is_training,
