@@ -1,4 +1,4 @@
-source "${HOME}/bin/activate-tf1"
+#!/bin/bash
 set -ex
 i="$1"
 shift 1
@@ -14,10 +14,12 @@ i=`printf '%04d' $i`
 TPU_CORES="${TPU_CORES:-1024}"
 TPU_INDEX="${TPU_INDEX:-0}"
 tpu="${TPU_NAME:-tpu-v3-${TPU_CORES}-euw4a-${TPU_INDEX}}"
+BUCKET="${BUCKET:-gs://dota-euw4a}"
+RUN_NAME="${RUN_NAME:-imagenet}"
 
-data_dir="gs://danbooru-euw4a/imagenet/out"
-model_dir="gs://danbooru-euw4a/benchmarks/daxx/tmp/tf-1-15/v3-${TPU_CORES}/results-${i}"
-export_dir="gs://danbooru-euw4a/benchmarks/daxx/tmp/tf-1-15/v3-${TPU_CORES}/results-${i}"
+data_dir="${BUCKET}/datasets/imagenet"
+model_dir="${BUCKET}/benchmarks/daxx/${RUN_NAME}/tf-1-15/v3-${TPU_CORES}/results-${i}"
+export_dir="${BUCKET}/benchmarks/daxx/${RUN_NAME}/tf-1-15/v3-${TPU_CORES}/results-${i}"
 save_graphs=True
 
 export NOISY=1
