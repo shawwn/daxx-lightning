@@ -231,9 +231,9 @@ def reroute(addr, host=None):
   if a == 10 and b in [48, 49]:
     assert (d == 2)
     port = b * 1000 + c
-  elif a == 10 and b in range(50, 60):
-    assert (c == 0)
-    port = b * 1000 + d
+  elif a == 10 and b in range(2, 66):
+    assert c in [0, 1]
+    port = b * 1000 + 256 * c + d
   else:
     return addr
   return host + ':' + str(port)
