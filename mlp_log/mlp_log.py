@@ -81,12 +81,14 @@ def mlperf_print(key, value, stack_offset=0, metadata=None):
       mlperf_format(
           key, value, stack_offset=stack_offset + 1, metadata=metadata))
 
+_mlperf_constants = {}
+
 def mlperf_log(key, value):
   import tensorflow as tf
   tf.logging.info('mlperf_log(%r, %r)', key, value)
   if isinstance(value, int) or isinstance(value, float):
     mlperf_print(key, value)
-    mlperf_scalar(key, value)
+    _mlperf_constants[key] = value
   elif tf.is_tensor(value):
     mlperf_scalar(key, value)
   return value
@@ -108,7 +110,7 @@ def mlperf_scalar(key, value, collection=_MLPERF_SCALARS):
   return value
 
 def mlperf_scalars(collection=_MLPERF_SCALARS):
-  r = {}
+  r = dict(_mlperf_constants)
   import tensorflow as tf
   scalars = tf.get_collection_ref(collection)
   for scalar in scalars:
