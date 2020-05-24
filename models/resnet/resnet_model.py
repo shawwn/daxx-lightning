@@ -188,11 +188,12 @@ def distributed_batch_norm(inputs,
 def evonorm_s0(inputs,
               data_format=None,
               nonlinearity=True,
-              name="evonorm_s0",
+              name="batch_normalization",
               scale=True,
               center=True,
-              gamma_initializer=None):
-  with tf.variable_scope(name, values=[inputs]):
+              gamma_initializer=None,
+              scope=None):
+  with tf.variable_scope(scope, name, [inputs], reuse=None):
     if data_format not in {"NCHW", "NHWC"}:
       raise ValueError(
           "Invalid data_format {}. Allowed: NCHW, NHWC.".format(data_format))
@@ -263,7 +264,7 @@ def group_std(x, groups=32, eps=1e-5):
   return tf.reshape(std, [N, H, W, C])
 
 def trainable_variable_ones(num_channels, name="v"):
-  return tf.get_variable("{}_{}".format(name, num_channels), shape=[num_channels], initializer=tf.ones_initializer(), dtype=tf.float32)
+  return tf.get_variable(name, shape=[num_channels], initializer=tf.ones_initializer(), dtype=tf.float32)
 
 def batch_norm_relu(inputs,
                     is_training,
