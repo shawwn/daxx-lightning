@@ -415,9 +415,8 @@ def resnet_model_fn(features, labels, mode, params):
 
     # Choose between LARS or momentum.
     if FLAGS.enable_lars:
-      learning_rate = 0.0
       mlp_log.mlperf_print('opt_name', 'lars')
-      optimizer = lars_util.init_lars_optimizer(current_epoch)
+      optimizer, learning_rate = lars_util.init_lars_optimizer(current_epoch)
     else:
       mlp_log.mlperf_print('opt_name', 'sgd')
       learning_rate = learning_rate_schedule(current_epoch)

@@ -112,4 +112,4 @@ def init_lars_optimizer(current_epoch):
       weight_decay=FLAGS.weight_decay,
       skip_list=['batch_normalization', 'bias'],
       epsilon=lars_epsilon)
-  return optimizer
+  return optimizer, learning_rate
