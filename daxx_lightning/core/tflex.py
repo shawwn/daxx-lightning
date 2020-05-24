@@ -393,23 +393,23 @@ class Session(tf.Session):
     #                              disable_meta_optimizer=True)),
     #                          isolate_session_state=True)
     #config.isolate_session_state = True
-    resolver = get_tpu_resolver(target)
-    if resolver is not None:
-      target = resolver.get_master()
-      #cluster_spec = resolver.cluster_spec()
-      #if cluster_spec:
-      #  config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
-    else:
-      if target == 'auto':
-        target = None
+    # resolver = get_tpu_resolver(target)
+    # if resolver is not None:
+    #   target = resolver.get_master()
+    #   #cluster_spec = resolver.cluster_spec()
+    #   #if cluster_spec:
+    #   #  config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+    # else:
+    #   if target == 'auto':
+    #     target = None
     super().__init__(target, graph=graph, config=config)
     self.id = id
-    self._tflex_resolver = resolver
-    self._tflex_target = target
-    self._tflex_config = config
-    ensure_default('session', self)
-    #ensure_default('devices', self.list_devices())
-    ensure_default('graph', self.graph)
+    # self._tflex_resolver = resolver
+    # self._tflex_target = target
+    # self._tflex_config = config
+    # ensure_default('session', self)
+    # #ensure_default('devices', self.list_devices())
+    # ensure_default('graph', self.graph)
 
   @property
   def _spec(self):
