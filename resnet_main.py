@@ -143,6 +143,11 @@ flags.DEFINE_bool(
           ' keep up with the TPU-side computation.'))
 
 flags.DEFINE_integer(
+  'experimental_host_call_every_n_steps', default=None,
+  help=('Number of steps to run on TPU before running the host call.'
+        ' A value of None will use FLAGS.iterations_per_loop.'))
+
+flags.DEFINE_integer(
     'iterations_per_loop', default=1251,
     help=('Number of steps to run on TPU before outfeeding metrics to the CPU.'
           ' If the number of iterations in the loop would exceed the number of'
@@ -628,6 +633,7 @@ def main(unused_argv):
             iterations_per_loop=FLAGS.iterations_per_loop,
             tpu_job_name=FLAGS.tpu_job_name,
             # num_shards=FLAGS.num_cores,
+            experimental_host_call_every_n_steps=FLAGS.experimental_host_call_every_n_steps or FLAGS.iterations_per_loop,
             per_host_input_for_training=tf.contrib.tpu.InputPipelineConfig
             .PER_HOST_V2))  # pylint: disable=line-too-long
 
