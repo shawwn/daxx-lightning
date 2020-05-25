@@ -103,14 +103,15 @@ def poly_rate_schedule(current_epoch,
   return decay_rate
 
 
-def init_lars_optimizer(current_epoch):
+def init_lars_optimizer(current_epoch, learning_rate=None):
   """Initialize the LARS Optimizer."""
 
   lars_epsilon = FLAGS.lars_epsilon
   mlp_log.mlperf_log('lars_opt_weight_decay', FLAGS.weight_decay)
   mlp_log.mlperf_log('lars_epsilon', lars_epsilon)
 
-  learning_rate = poly_rate_schedule(current_epoch, FLAGS.poly_rate)
+  if learning_rate is None:
+    learning_rate = poly_rate_schedule(current_epoch, FLAGS.poly_rate)
   optimizer = tf.contrib.opt.LARSOptimizer(
       learning_rate,
       momentum=FLAGS.momentum,

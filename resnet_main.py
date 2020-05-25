@@ -436,16 +436,15 @@ def resnet_model_fn(features, labels, mode, params):
         (FLAGS.train_batch_size // FLAGS.num_cores))
 
     # Choose between LARS or momentum.
+    learning_rate = None
     if FLAGS.enable_lr_finder:
-      assert not FLAGS.enable_lars
+      learning_rate = learning_rate_finder(current_epoch)
     if FLAGS.enable_lars:
       mlp_log.mlperf_print('opt_name', 'lars')
-      optimizer, learning_rate = lars_util.init_lars_optimizer(current_epoch)
+      optimizer, learning_rate = lars_util.init_lars_optimizer(current_epoch, learning_rate=learning_rate)
     else:
       mlp_log.mlperf_print('opt_name', 'sgd')
-      if FLAGS.enable_lr_finder:
-        learning_rate = learning_rate_finder(current_epoch)
-      else:
+      if learning_rate is None:
         learning_rate = learning_rate_schedule(current_epoch)
       optimizer = tf.train.MomentumOptimizer(
           learning_rate=learning_rate,
