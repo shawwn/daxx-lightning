@@ -143,8 +143,10 @@ class TrainAndEvalRunner(object):
     self.enqueue_ops = []
     self.num_hosts = FLAGS.num_cores // FLAGS.tpu_cores_per_host
     self.dequeue_ops = []
+    self.host_dequeue_ops = []
     self.queue = Queue.Queue()
     self.eval_enqueue_ops = []
+    self.host_call_ops = []
     self.dataset_initializer = []
     self.eval_dataset_initializer = []
     self.iterations = iterations
@@ -296,8 +298,8 @@ class TrainAndEvalRunner(object):
   def get_tpu_step(self, mparams, model_fn, is_training=True):
     """Get the TPU graph generation function."""
 
-    host_call = tpu_estimator._OutfeedHostCall(
-        self._ctx, outfeed_every_n_steps=self.host_call_every_steps)
+    # host_call = tpu_estimator._OutfeedHostCall(
+    #     self._ctx, outfeed_every_n_steps=self.host_call_every_steps)
 
     def tpu_step(step):
       """Generate the TPU graph."""
@@ -317,46 +319,60 @@ class TrainAndEvalRunner(object):
                                   mparams)
         loss, train_op = estimator_spec.loss, estimator_spec.train_op
 
-        if tensor_tracer.TensorTracer.is_enabled():
-          tt = tensor_tracer.TensorTracer()
-          loss = tt.trace_tpu(ops.get_default_graph(), loss, train_op,
-                              self._ctx.num_replicas)
-          tracer_host_call = tt.host_call_deps_and_fn()
-        else:
-          tracer_host_call = {}
+        # if tensor_tracer.TensorTracer.is_enabled():
+        #   tt = tensor_tracer.TensorTracer()
+        #   loss = tt.trace_tpu(ops.get_default_graph(), loss, train_op,
+        #                       self._ctx.num_replicas)
+        #   tracer_host_call = tt.host_call_deps_and_fn()
+        # else:
+        #   tracer_host_call = {}
+        #
+        # with tf.device(device_for_tpu_core(self.get_host(0))):
+        #   with tf.control_dependencies([train_op]):
+        #     return tf.identity(loss)
+        #   # We must run train_op to update the variables prior to running the
+        #   # outfeed.
+        #   with ops.control_dependencies([train_op]):
+        #     host_call_outfeed_ops = []
+        #     host_call_fn, host_call_args = None, []
+        #
+        #     if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
+        #             and estimator_spec.host_call is not None):
+        #       host_call_fn, host_call_args = estimator_spec.host_call
+        #
+        #     if host_call_fn:
+        #       # Ignore dummy hostcalls (no arguments)
+        #       if host_call_args:
+        #         tracer_host_call.update({'host_call': estimator_spec.host_call})
+        #         host_call.record(tracer_host_call)
+        #         host_call_outfeed_ops = host_call.create_enqueue_op(step)
+        #     else:
+        #       # Create a host call for the loss to track execution progress
+        #       # Without this, we don't have any indication of the state of the
+        #       # TPU program.
+        #       tracer_host_call.update({
+        #         'host_call': (lambda loss_t: loss_t,
+        #                       [array_ops.reshape(loss, [1])])
+        #       })
+        #       host_call.record(tracer_host_call)
+        #       host_call_outfeed_ops = host_call.create_enqueue_op(step)
+        #
+        #     with ops.control_dependencies(host_call_outfeed_ops):
+        #       return array_ops.identity(loss)
 
-        with tf.device(device_for_tpu_core(self.get_host(0))):
-          # with tf.control_dependencies([train_op]):
-          #   return tf.identity(loss)
-          # We must run train_op to update the variables prior to running the
-          # outfeed.
-          with ops.control_dependencies([train_op]):
-            host_call_outfeed_ops = []
-            host_call_fn, host_call_args = None, []
+        if len(self.host_call_ops) > 0:
+          logging.warning('Existing host call ops %r', self.host_call_ops)
+          self.host_call_ops = []
 
-            if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
-                    and estimator_spec.host_call is not None):
-              host_call_fn, host_call_args = estimator_spec.host_call
+        def host_call_noop(*args):
+          with tf.control_dependencies(args):
+            return tf.no_op(name="host_call_noop")
 
-            if host_call_fn:
-              # Ignore dummy hostcalls (no arguments)
-              if host_call_args:
-                tracer_host_call.update({'host_call': estimator_spec.host_call})
-                host_call.record(tracer_host_call)
-                host_call_outfeed_ops = host_call.create_enqueue_op(step)
-            else:
-              # Create a host call for the loss to track execution progress
-              # Without this, we don't have any indication of the state of the
-              # TPU program.
-              tracer_host_call.update({
-                'host_call': (lambda loss_t: loss_t,
-                              [array_ops.reshape(loss, [1])])
-              })
-              host_call.record(tracer_host_call)
-              host_call_outfeed_ops = host_call.create_enqueue_op(step)
-
-            with ops.control_dependencies(host_call_outfeed_ops):
-              return array_ops.identity(loss)
+        self.host_call_fn, self.host_call_args = host_call_noop, []
+        if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
+                and estimator_spec.host_call is not None):
+          self.host_call_fn, self.host_call_args = estimator_spec.host_call
+        return tf.identity(loss)
 
       else:
         estimator_spec = model_fn(features, labels, tf.estimator.ModeKeys.EVAL,
@@ -366,10 +382,14 @@ class TrainAndEvalRunner(object):
         self.eval_tensors = estimator_spec.eval_metrics[1]
         for _ in self.eval_tensors:
           self.dequeue_ops.append([])
+        for _ in self.host_call_args:
+          self.host_dequeue_ops.append([])
         with tf.device(device_for_tpu_core(self.get_host(0))):
           outfeed_enqueue_ops = tpu.outfeed_enqueue_tuple(self.eval_tensors)
           with tf.control_dependencies([outfeed_enqueue_ops]):
-            return tf.identity(loss)
+            host_enqueue_ops = tpu.outfeed_enqueue_tuple(self.host_call_args)
+            with tf.control_dependencies([host_enqueue_ops]):
+              return tf.identity(loss)
 
     return tpu_step
 
@@ -505,12 +525,12 @@ class TrainAndEvalRunner(object):
         return tpu.repeat(self.max_train_iterations, train_eval_step,
                           [_INITIAL_LOSS])
 
-    def create_dequeue_ops(host_id):
+    def create_dequeue_ops(host_id, tensors):
       """Create deque ops graph function."""
       dequeue_ops = []
       tensor_dtypes = []
       tensor_shapes = []
-      for v in self.eval_tensors:
+      for v in tensors:
         dequeue_ops.append([])
         tensor_dtypes.append(v.dtype)
         tensor_shapes.append(v.shape)
@@ -547,15 +567,20 @@ class TrainAndEvalRunner(object):
     with self.eval_output_graph.as_default(), self.with_mode(tf.estimator.ModeKeys.EVAL):
       with tf.variable_scope("resnet", reuse=True):
         for i in range(0, self.num_hosts):
-          host_dequeue_ops = create_dequeue_ops(i)
-          for j, dequeue_tenor in enumerate(host_dequeue_ops):
-            self.dequeue_ops[j].append(dequeue_tenor)
-
+          dequeue_ops = create_dequeue_ops(i, self.eval_tensors)
+          host_dequeue_ops = create_dequeue_ops(i, self.host_call_args)
+          for j, dequeue_tensor in enumerate(dequeue_ops):
+            self.dequeue_ops[j].append(dequeue_tensor)
+          for j, dequeue_tensor in enumerate(host_dequeue_ops):
+            self.host_dequeue_ops[j].append(dequeue_tensor)
         for j, _ in enumerate(self.eval_tensors):
           self.dequeue_ops[j] = tf.concat(self.dequeue_ops[j], axis=0)
-
+        for j, _ in enumerate(self.host_call_args):
+          self.host_dequeue_ops[j] = tf.concat(self.host_dequeue_ops[j], axis=0)
         with tf.device(device_for_host(self.get_host(0))):
-          metrics = self.eval_metrics[0](*self.dequeue_ops)
+          self.host_call_ops = self.host_call_fn(*self.host_dequeue_ops)
+          with tf.control_dependencies([self.host_call_ops]):
+            metrics = self.eval_metrics[0](*self.dequeue_ops)
         metric_update_ops = []
         metric_value_ops = {}
         for (k, v) in metrics.items():
