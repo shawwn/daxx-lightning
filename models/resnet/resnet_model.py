@@ -380,7 +380,7 @@ def evonorm_s0(inputs,
     outputs = tf.cast(outputs, inputs_dtype)
   return outputs
 
-def evonorm_q0(inputs, z=None,
+def evonorm_q0(inputs, z=None, z_dim=128,
                training=True,
                nonlinearity=True,
                #name="batch_normalization",
@@ -419,7 +419,7 @@ def evonorm_q0(inputs, z=None,
 
     with tf.variable_scope("sbn", values=[inputs]):
       if z is None:
-        z = tf.random.uniform(minval=-1.0, maxval=1.0, dtype=tf.float32)
+        z = tf.random.uniform(minval=-1.0, maxval=1.0, dtype=tf.float32, shape=[z_dim])
       h = z
       if num_hidden > 0:
         h = linear(h, num_hidden, scope="hidden", use_sn=use_sn)
