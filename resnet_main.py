@@ -319,6 +319,7 @@ def learning_rate_schedule(current_epoch):
   """
   mlp_log.mlperf_log('base_learning_rate', FLAGS.base_learning_rate)
   scaled_lr = FLAGS.base_learning_rate * (FLAGS.train_batch_size / 256.0)
+  mlp_log.mlperf_log('scaled_learning_rate', scaled_lr)
 
   decay_rate = (scaled_lr * LR_SCHEDULE[0][0] *
                 current_epoch / LR_SCHEDULE[0][1])
