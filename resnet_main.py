@@ -251,9 +251,9 @@ flags.DEFINE_float('poly_rate', default=0.0,
 flags.DEFINE_bool('enable_lr_finder', default=False,
                   help=('Sweep LRs'))
 
-flags.DEFINE_float('lr_finder_decay_rate', default=1.3)
-flags.DEFINE_float('lr_finder_decay_steps', default=None)
-flags.DEFINE_float('lr_finder_start_lr', default=1e-10)
+flags.DEFINE_float('lr_finder_decay_rate', default=1.3, help=('Set LR finder decay rate'))
+flags.DEFINE_float('lr_finder_decay_steps', default=None, help=('Set LR finder decay steps'))
+flags.DEFINE_float('lr_finder_start_lr', default=1e-10, help=('Set LR finder start learning rate'))
 
 flags.DEFINE_bool(
     'use_cache', default=True, help=('Enable cache for training input.'))
