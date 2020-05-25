@@ -185,6 +185,133 @@ def distributed_batch_norm(inputs,
     outputs.set_shape(inputs_shape)
     return outputs
 
+def spectral_norm(inputs, epsilon=1e-12, singular_value="left"):
+  """Performs Spectral Normalization on a weight tensor.
+
+  Details of why this is helpful for GAN's can be found in "Spectral
+  Normalization for Generative Adversarial Networks", Miyato T. et al., 2018.
+  [https://arxiv.org/abs/1802.05957].
+
+  Args:
+    inputs: The weight tensor to normalize.
+    epsilon: Epsilon for L2 normalization.
+    singular_value: Which first singular value to store (left or right). Use
+      "auto" to automatically choose the one that has fewer dimensions.
+
+  Returns:
+    The normalized weight tensor.
+  """
+  if len(inputs.shape) < 2:
+    raise ValueError(
+        "Spectral norm can only be applied to multi-dimensional tensors")
+
+  # The paper says to flatten convnet kernel weights from (C_out, C_in, KH, KW)
+  # to (C_out, C_in * KH * KW). Our Conv2D kernel shape is (KH, KW, C_in, C_out)
+  # so it should be reshaped to (KH * KW * C_in, C_out), and similarly for other
+  # layers that put output channels as last dimension. This implies that w
+  # here is equivalent to w.T in the paper.
+  w = tf.reshape(inputs, (-1, inputs.shape[-1]))
+
+  # Choose whether to persist the first left or first right singular vector.
+  # As the underlying matrix is PSD, this should be equivalent, but in practice
+  # the shape of the persisted vector is different. Here one can choose whether
+  # to maintain the left or right one, or pick the one which has the smaller
+  # dimension. We use the same variable for the singular vector if we switch
+  # from normal weights to EMA weights.
+  var_name = inputs.name.replace("/ExponentialMovingAverage", "").split("/")[-1]
+  var_name = var_name.split(":")[0] + "/u_var"
+  if singular_value == "auto":
+    singular_value = "left" if w.shape[0] <= w.shape[1] else "right"
+  u_shape = (w.shape[0], 1) if singular_value == "left" else (1, w.shape[-1])
+  u_var = tf.get_variable(
+      var_name,
+      shape=u_shape,
+      dtype=w.dtype,
+      initializer=tf.random_normal_initializer(),
+      collections=[tf.GraphKeys.LOCAL_VARIABLES],
+      trainable=False)
+  u = u_var
+
+  # Use power iteration method to approximate the spectral norm.
+  # The authors suggest that one round of power iteration was sufficient in the
+  # actual experiment to achieve satisfactory performance.
+  power_iteration_rounds = 1
+  for _ in range(power_iteration_rounds):
+    if singular_value == "left":
+      # `v` approximates the first right singular vector of matrix `w`.
+      v = tf.math.l2_normalize(
+          tf.matmul(tf.transpose(w), u), axis=None, epsilon=epsilon)
+      u = tf.math.l2_normalize(tf.matmul(w, v), axis=None, epsilon=epsilon)
+    else:
+      v = tf.math.l2_normalize(tf.matmul(u, w, transpose_b=True),
+                               epsilon=epsilon)
+      u = tf.math.l2_normalize(tf.matmul(v, w), epsilon=epsilon)
+
+  # Update the approximation.
+  with tf.control_dependencies([tf.assign(u_var, u, name="update_u")]):
+    u = tf.identity(u)
+
+  # The authors of SN-GAN chose to stop gradient propagating through u and v
+  # and we maintain that option.
+  u = tf.stop_gradient(u)
+  v = tf.stop_gradient(v)
+
+  if singular_value == "left":
+    norm_value = tf.matmul(tf.matmul(tf.transpose(u), w), v)
+  else:
+    norm_value = tf.matmul(tf.matmul(v, w), u, transpose_b=True)
+  norm_value.shape.assert_is_fully_defined()
+  norm_value.shape.assert_is_compatible_with([1, 1])
+
+  w_normalized = w / norm_value
+
+  # Deflate normalized weights to match the unnormalized tensor.
+  w_tensor_normalized = tf.reshape(w_normalized, inputs.shape)
+  return w_tensor_normalized, norm_value[0][0]
+
+
+def weight_initializer(initializer='normal', stddev=0.02):
+  """Returns the initializer for the given name.
+
+  Args:
+    initializer: Name of the initalizer. Use one in consts.INITIALIZERS.
+    stddev: Standard deviation passed to initalizer.
+
+  Returns:
+    Initializer from `tf.initializers`.
+  """
+  if initializer == 'normal':
+    return tf.initializers.random_normal(stddev=stddev)
+  if initializer == 'truncated':
+    return tf.initializers.truncated_normal(stddev=stddev)
+  if initializer == 'orthogonal':
+    return tf.initializers.orthogonal()
+  raise ValueError("Unknown weight initializer {}.".format(initializer))
+
+def linear(inputs, output_size, scope=None, stddev=0.02, bias_start=0.0,
+           use_sn=False, use_bias=True, dtype=tf.float32):
+  """Linear layer without the non-linear activation applied."""
+  shape = inputs.get_shape().as_list()
+  with tf.variable_scope(scope or "linear"):
+    kernel = tf.get_variable(
+        "kernel",
+        [shape[1], output_size],
+        dtype=dtype,
+        initializer=weight_initializer(stddev=stddev))
+    # kernel = graph_spectral_norm(kernel)
+    if use_sn:
+      kernel, norm = spectral_norm(kernel)
+    outputs = tf.matmul(inputs, kernel)
+    if use_bias:
+      bias = tf.get_variable(
+          "bias",
+          [output_size],
+          dtype=dtype,
+          initializer=tf.constant_initializer(bias_start))
+      outputs += bias
+    return outputs
+
+
 def evonorm_s0(inputs,
               training=True,
               nonlinearity=True,
@@ -224,7 +351,7 @@ def evonorm_s0(inputs,
       assert num_channels % groups == 0
       assert groups <= num_channels
       assert groups > 0
-      v = trainable_variable_ones(shape=[num_channels])
+      v = trainable_variable_ones(shape=[1, 1, 1, num_channels])
       num = inputs * tf.sigmoid(v * inputs)
       outputs = num / group_std(inputs, groups=groups)
     else:
@@ -252,6 +379,63 @@ def evonorm_s0(inputs,
 
     outputs = tf.cast(outputs, inputs_dtype)
   return outputs
+
+def evonorm_q0(inputs, z=None,
+               training=True,
+               nonlinearity=True,
+               #name="batch_normalization",
+               name="evonorm_q0",
+               scale=True,
+               center=True,
+               scope=None,
+               num_hidden=128,
+               use_sn=True):
+  with tf.variable_scope(scope, name, [inputs], reuse=None):
+    inputs = tf.convert_to_tensor(inputs)
+    inputs_shape = inputs.get_shape()
+    inputs_dtype = inputs.dtype
+    num_channels = inputs.shape[-1].value
+    if num_channels is None:
+      raise ValueError("`C` dimension must be known but is None")
+
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError("Inputs %s has undefined rank" % inputs.name)
+    elif inputs_rank not in [4]: #[2, 4]:
+      raise ValueError(
+        "Inputs %s has unsupported rank."
+        " Expected 4 but got %d" % (inputs.name, inputs_rank))
+      #" Expected 2 or 4 but got %d" % (inputs.name, inputs_rank))
+
+    # if inputs_rank == 2:
+    #   new_shape = [-1, 1, 1, num_channels]
+    #   if data_format == "NCHW":
+    #     new_shape = [-1, num_channels, 1, 1]
+    #   inputs = tf.reshape(inputs, new_shape)
+
+    inputs = tf.cast(inputs, tf.float32)
+    outputs = evonorm_s0(inputs, scale=False, center=False)
+    num_channels = inputs.shape[-1].value
+
+    with tf.variable_scope("sbn", values=[inputs]):
+      if z is None:
+        z = tf.random.uniform(minval=-1.0, maxval=1.0, dtype=tf.float32)
+      h = z
+      if num_hidden > 0:
+        h = linear(h, num_hidden, scope="hidden", use_sn=use_sn)
+        h = tf.nn.relu(h)
+      if scale:
+        gamma = linear(h, num_channels, scope="gamma", bias_start=1.0,
+                       use_sn=use_sn)
+        gamma = tf.reshape(gamma, [-1, 1, 1, num_channels])
+        outputs *= gamma
+      if center:
+        beta = linear(h, num_channels, scope="beta", use_sn=use_sn)
+        beta = tf.reshape(beta, [-1, 1, 1, num_channels])
+        outputs += beta
+      outputs = tf.cast(outputs, inputs_dtype)
+      return outputs
+
 
 # def instance_std(x, eps=1e-5):
 #   _, var = tf.nn.moments(x, axes=[1, 2], keepdims=True)
@@ -289,7 +473,7 @@ def group_std(inputs, groups=32, eps=DEFAULT_EPSILON_VALUE, axis=-1):
 def trainable_variable_ones(shape, name="v", initializer=None):
   if initializer is None:
     initializer = tf.ones_initializer()
-  return tf.get_variable(name, shape=shape, initializer=initializer, dtype=tf.float32)
+  return tf.get_variable(name, shape=shape, initializer=initializer, dtype=tf.float32, trainable=True)
 
 def batch_norm_relu(inputs,
                     is_training,
@@ -343,7 +527,7 @@ def batch_norm_relu(inputs,
         training=is_training,
         fused=True,
         gamma_initializer=gamma_initializer)
-  else:
+  elif FLAGS.distributed_group_size == 0:
     tf.logging.info('Using batchnorm evonorm_s0')
     assert data_format == 'channels_last'
     inputs = evonorm_s0(
@@ -353,6 +537,13 @@ def batch_norm_relu(inputs,
         training=is_training,
         #gamma_initializer=None)
         gamma_initializer=gamma_initializer)
+    relu = False
+  else:
+    tf.logging.info('Using batchnorm evonorm_q0')
+    assert data_format == 'channels_last'
+    inputs = evonorm_q0(
+      inputs=inputs,
+      training=is_training)
     relu = False
 
   if relu:
