@@ -245,6 +245,9 @@ flags.DEFINE_bool('enable_lars',
                   default=False,
                   help=('Enable LARS optimizer for large batch training.'))
 
+flags.DEFINE_bool('enable_lr_finder', default=False,
+                   help=('Sweep LRs'))
+
 flags.DEFINE_float('poly_rate', default=0.0,
                    help=('Set LARS/Poly learning rate.'))
 
@@ -320,6 +323,19 @@ def learning_rate_schedule(current_epoch):
                           decay_rate, scaled_lr * mult)
   return decay_rate
 
+def learning_rate_finder(current_epoch):
+  #training_steps = 12000
+  #batch_size = 128
+  #decay_steps = 100
+  start_lr = 1e-10
+  decay_steps = FLAGS.train_steps * 100 / 12000
+  decay_rate = 1.30
+  global_step = tf.train.get_or_create_global_step()
+  #decay_learning_rate = learning_rate * decay_rate ^ (global_step / decay_steps)
+  learning_rate = tf.train.exponential_decay(
+    start_lr, global_step=global_step,
+    decay_steps=decay_steps, decay_rate=decay_rate)
+  return learning_rate
 
 def resnet_model_fn(features, labels, mode, params):
   """The model_fn for ResNet to be used with TPUEstimator.
@@ -419,12 +435,17 @@ def resnet_model_fn(features, labels, mode, params):
         (FLAGS.train_batch_size // FLAGS.num_cores))
 
     # Choose between LARS or momentum.
+    if FLAGS.enable_lr_finder:
+      assert not FLAGS.enable_lars
     if FLAGS.enable_lars:
       mlp_log.mlperf_print('opt_name', 'lars')
       optimizer, learning_rate = lars_util.init_lars_optimizer(current_epoch)
     else:
       mlp_log.mlperf_print('opt_name', 'sgd')
-      learning_rate = learning_rate_schedule(current_epoch)
+      if FLAGS.enable_lr_finder:
+        learning_rate = learning_rate_finder(current_epoch)
+      else:
+        learning_rate = learning_rate_schedule(current_epoch)
       optimizer = tf.train.MomentumOptimizer(
           learning_rate=learning_rate,
           momentum=FLAGS.momentum,
