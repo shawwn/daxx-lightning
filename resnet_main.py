@@ -333,6 +333,9 @@ def learning_rate_finder(current_epoch):
   decay_rate = FLAGS.lr_finder_decay_rate
   global_step = tf.train.get_or_create_global_step()
   #decay_learning_rate = learning_rate * decay_rate ^ (global_step / decay_steps)
+  mlp_log.mlperf_log('lr_finder_start_lr', start_lr)
+  mlp_log.mlperf_log('lr_finder_decay_steps', decay_steps)
+  mlp_log.mlperf_log('lr_finder_decay_rate', decay_rate)
   learning_rate = tf.train.exponential_decay(
     start_lr, global_step=global_step,
     decay_steps=decay_steps, decay_rate=decay_rate)
