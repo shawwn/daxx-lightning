@@ -419,7 +419,7 @@ def evonorm_q0(inputs, z=None, z_dim=128,
 
     with tf.variable_scope("sbn", values=[inputs]):
       if z is None:
-        z = tf.random.uniform(minval=-1.0, maxval=1.0, dtype=tf.float32, shape=[inputs_shape[0], z_dim])
+        z = tf.random.uniform(minval=-1.0, maxval=1.0, dtype=tf.float32, shape=[inputs_shape[0] or 1, z_dim])
       h = z
       if num_hidden > 0:
         h = linear(h, num_hidden, scope="hidden", use_sn=use_sn)
