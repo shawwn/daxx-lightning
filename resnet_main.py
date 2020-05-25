@@ -442,9 +442,9 @@ def resnet_model_fn(features, labels, mode, params):
     with tf.control_dependencies(update_ops):
       train_op = optimizer.minimize(loss, global_step)
 
-    mlp_log.mlperf_log('learning_rate', learning_rate)
-    mlp_log.mlperf_log('current_epoch', current_epoch)
-    mlp_log.mlperf_log('global_step', global_step)
+    # mlp_log.mlperf_log('learning_rate', learning_rate)
+    # mlp_log.mlperf_log('current_epoch', current_epoch)
+    # mlp_log.mlperf_log('global_step', global_step)
 
     if not FLAGS.skip_host_call:
       def host_call_fn(gs, loss, lr, ce):
