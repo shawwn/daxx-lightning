@@ -29,6 +29,10 @@ flags.DEFINE_float(
     help=('Override autoselected LARS learning rate.'))
 
 flags.DEFINE_float(
+  'lars_end_learning_rate', default=0.0001,
+  help=('Override autoselected LARS learning rate.'))
+
+flags.DEFINE_float(
     'lars_epsilon', default=0.0,
     help=('Override autoselected LARS learning rate.'))
 
@@ -77,7 +81,7 @@ def poly_rate_schedule(current_epoch,
 
   mlp_log.mlperf_log('opt_base_learning_rate', plr)
   mlp_log.mlperf_log('opt_learning_rate_warmup_epochs', w_epochs)
-  mlp_log.mlperf_log('lars_opt_end_learning_rate', 0.0001)
+  mlp_log.mlperf_log('lars_opt_end_learning_rate', FLAGS.lars_end_learning_rate)
 
   wrate = (plr * current_epoch / w_epochs)
   w_steps = (w_epochs * FLAGS.num_train_images // batch_size)
@@ -93,7 +97,8 @@ def poly_rate_schedule(current_epoch,
       plr,
       decay_steps,
       FLAGS.train_steps - w_steps + 1,
-      power=2.0)
+      power=2.0,
+      end_learning_rate=FLAGS.lars_end_learning_rate)
   decay_rate = tf.where(current_epoch <= w_epochs, wrate, poly_rate)
   return decay_rate
 
