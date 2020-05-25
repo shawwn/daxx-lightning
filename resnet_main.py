@@ -245,11 +245,15 @@ flags.DEFINE_bool('enable_lars',
                   default=False,
                   help=('Enable LARS optimizer for large batch training.'))
 
-flags.DEFINE_bool('enable_lr_finder', default=False,
-                   help=('Sweep LRs'))
-
 flags.DEFINE_float('poly_rate', default=0.0,
                    help=('Set LARS/Poly learning rate.'))
+
+flags.DEFINE_bool('enable_lr_finder', default=False,
+                  help=('Sweep LRs'))
+
+flags.DEFINE_float('lr_finder_decay_rate', default=1.3)
+flags.DEFINE_float('lr_finder_decay_steps', default=None)
+flags.DEFINE_float('lr_finder_start_lr', default=1e-10)
 
 flags.DEFINE_bool(
     'use_cache', default=True, help=('Enable cache for training input.'))
@@ -324,12 +328,9 @@ def learning_rate_schedule(current_epoch):
   return decay_rate
 
 def learning_rate_finder(current_epoch):
-  #training_steps = 12000
-  #batch_size = 128
-  #decay_steps = 100
-  start_lr = 1e-10
-  decay_steps = FLAGS.train_steps * 100 / 12000
-  decay_rate = 1.30
+  start_lr = FLAGS.lr_finder_start_lr
+  decay_steps = FLAGS.lr_finder_decay_steps or (FLAGS.train_steps * 100 / 12000)
+  decay_rate = FLAGS.lr_finder_decay_rate
   global_step = tf.train.get_or_create_global_step()
   #decay_learning_rate = learning_rate * decay_rate ^ (global_step / decay_steps)
   learning_rate = tf.train.exponential_decay(
