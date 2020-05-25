@@ -39,7 +39,6 @@ from tensorflow.python.tpu import tpu as tpu_ops
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu import tensor_tracer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops
 from tensorflow.core.protobuf.tpu import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow_estimator.python.estimator.tpu import tpu_estimator
@@ -372,7 +371,13 @@ class TrainAndEvalRunner(object):
         if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
                 and estimator_spec.host_call is not None):
           self.host_call_fn, self.host_call_args = estimator_spec.host_call
-        return tf.identity(loss)
+        # return tf.identity(loss)
+        for _ in self.host_call_args:
+          self.host_dequeue_ops.append([])
+        with tf.device(device_for_tpu_core(self.get_host(0))):
+          host_enqueue_ops = tpu.outfeed_enqueue_tuple(self.host_call_args)
+          with tf.control_dependencies([host_enqueue_ops]):
+            return tf.identity(loss)
 
       else:
         estimator_spec = model_fn(features, labels, tf.estimator.ModeKeys.EVAL,
@@ -387,9 +392,7 @@ class TrainAndEvalRunner(object):
         with tf.device(device_for_tpu_core(self.get_host(0))):
           outfeed_enqueue_ops = tpu.outfeed_enqueue_tuple(self.eval_tensors)
           with tf.control_dependencies([outfeed_enqueue_ops]):
-            host_enqueue_ops = tpu.outfeed_enqueue_tuple(self.host_call_args)
-            with tf.control_dependencies([host_enqueue_ops]):
-              return tf.identity(loss)
+            return tf.identity(loss)
 
     return tpu_step
 
@@ -494,6 +497,25 @@ class TrainAndEvalRunner(object):
     finally:
       self._ctx = prev_ctx
 
+  def create_dequeue_ops(self, host_id, tensors):
+    """Create deque ops graph function."""
+    dequeue_ops = []
+    tensor_dtypes = []
+    tensor_shapes = []
+    for v in tensors:
+      dequeue_ops.append([])
+      tensor_dtypes.append(v.dtype)
+      tensor_shapes.append(v.shape)
+    for i in range(FLAGS.tpu_cores_per_host):
+      with tf.device(device_for_host(self.get_host(host_id))):
+        outfeed_tensors = tpu.outfeed_dequeue_tuple(
+          dtypes=tensor_dtypes, shapes=tensor_shapes, device_ordinal=i)
+        for j, item in enumerate(outfeed_tensors):
+          dequeue_ops[j].append(item)
+    for j in range(len(outfeed_tensors)):
+      dequeue_ops[j] = tf.concat(dequeue_ops[j], axis=0)
+    return dequeue_ops
+
   def initialize_eval(self, params, eval_input_fn, model_fn):
     """Initialize eval."""
 
@@ -525,25 +547,6 @@ class TrainAndEvalRunner(object):
         return tpu.repeat(self.max_train_iterations, train_eval_step,
                           [_INITIAL_LOSS])
 
-    def create_dequeue_ops(host_id, tensors):
-      """Create deque ops graph function."""
-      dequeue_ops = []
-      tensor_dtypes = []
-      tensor_shapes = []
-      for v in tensors:
-        dequeue_ops.append([])
-        tensor_dtypes.append(v.dtype)
-        tensor_shapes.append(v.shape)
-      for i in range(FLAGS.tpu_cores_per_host):
-        with tf.device(device_for_host(self.get_host(host_id))):
-          outfeed_tensors = tpu.outfeed_dequeue_tuple(
-              dtypes=tensor_dtypes, shapes=tensor_shapes, device_ordinal=i)
-          for j, item in enumerate(outfeed_tensors):
-            dequeue_ops[j].append(item)
-      for j in range(len(outfeed_tensors)):
-        dequeue_ops[j] = tf.concat(dequeue_ops[j], axis=0)
-      return dequeue_ops
-
     with self.graph.as_default(), self.with_mode(tf.estimator.ModeKeys.TRAIN):
       # Add input that represents id for each replica in sync so that
       # _TPUEstimatorReplicaContext can be correctly entered during
@@ -563,24 +566,25 @@ class TrainAndEvalRunner(object):
 
         graph_io.write_graph(tf.Graph().as_graph_def(add_shapes=True),
                              FLAGS.model_dir, "graph.pbtxt")
-
-    with self.eval_output_graph.as_default(), self.with_mode(tf.estimator.ModeKeys.EVAL):
-      with tf.variable_scope("resnet", reuse=True):
         for i in range(0, self.num_hosts):
-          dequeue_ops = create_dequeue_ops(i, self.eval_tensors)
-          host_dequeue_ops = create_dequeue_ops(i, self.host_call_args)
-          for j, dequeue_tensor in enumerate(dequeue_ops):
-            self.dequeue_ops[j].append(dequeue_tensor)
+          host_dequeue_ops = self.create_dequeue_ops(i, self.host_call_args)
           for j, dequeue_tensor in enumerate(host_dequeue_ops):
             self.host_dequeue_ops[j].append(dequeue_tensor)
-        for j, _ in enumerate(self.eval_tensors):
-          self.dequeue_ops[j] = tf.concat(self.dequeue_ops[j], axis=0)
         for j, _ in enumerate(self.host_call_args):
           self.host_dequeue_ops[j] = tf.concat(self.host_dequeue_ops[j], axis=0)
         with tf.device(device_for_host(self.get_host(0))):
           self.host_call_ops = self.host_call_fn(*self.host_dequeue_ops)
-          with tf.control_dependencies([self.host_call_ops]):
-            metrics = self.eval_metrics[0](*self.dequeue_ops)
+
+    with self.eval_output_graph.as_default(), self.with_mode(tf.estimator.ModeKeys.EVAL):
+      with tf.variable_scope("resnet", reuse=True):
+        for i in range(0, self.num_hosts):
+          dequeue_ops = self.create_dequeue_ops(i, self.eval_tensors)
+          for j, dequeue_tensor in enumerate(dequeue_ops):
+            self.dequeue_ops[j].append(dequeue_tensor)
+        for j, _ in enumerate(self.eval_tensors):
+          self.dequeue_ops[j] = tf.concat(self.dequeue_ops[j], axis=0)
+        with tf.device(device_for_host(self.get_host(0))):
+          metrics = self.eval_metrics[0](*self.dequeue_ops)
         metric_update_ops = []
         metric_value_ops = {}
         for (k, v) in metrics.items():
