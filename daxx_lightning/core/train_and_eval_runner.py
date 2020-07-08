@@ -442,6 +442,12 @@ class TrainAndEvalRunner(object):
             tf.get_collection(tf.GraphKeys.METRIC_VARIABLES))
 
   def train_and_eval(self, output_summaries=False, enable_tracing=True):
+    try:
+      return self._train_and_eval(output_summaries=output_summaries, enable_tracing=enable_tracing)
+    except KeyboardInterrupt:
+      self.save()
+
+  def _train_and_eval(self, output_summaries=False, enable_tracing=True):
     """Run the Train steps on the TPU device."""
     if output_summaries:
       output_dir = os.path.join(FLAGS.model_dir, "eval")
@@ -473,14 +479,14 @@ class TrainAndEvalRunner(object):
     if enable_tracing:
       self.launch_profiler()
 
-    cur_step = 0
+    self.cur_step = 0
     success = False
-    while cur_step < self.train_steps:
+    while self.cur_step < self.train_steps:
       start = time.time()
       tf.logging.info("TrainAndEvalRunner: start next %d steps",
                       self.iterations)
-      cur_step += self.iterations
-      epoch = cur_step // self.steps_per_epoch - 1
+      self.cur_step += self.iterations
+      epoch = self.cur_step // self.steps_per_epoch - 1
       mlp_log.mlperf_print(
           "block_start", None, metadata={"first_epoch_num": epoch + 1,
                                          "epoch_count": 4})
@@ -488,7 +494,7 @@ class TrainAndEvalRunner(object):
       end = time.time()
       tf.logging.info(
           "TrainAndEvalRunner: step {} step time {} sec {} examples/sec".format(
-              cur_step, end - start,
+              self.cur_step, end - start,
               self.iterations * FLAGS.train_batch_size / (end - start)))
       # Run eval.
       # Write out summary to tensorboard.
@@ -499,7 +505,7 @@ class TrainAndEvalRunner(object):
             summaries.append(
                 tf.Summary.Value(tag=metric, simple_value=eval_results[metric]))
             tf_summary = tf.Summary(value=list(summaries))
-            summary_writer.add_summary(tf_summary, cur_step)
+            summary_writer.add_summary(tf_summary, self.cur_step)
           summary_writer.flush()
       # MLPerf logging for eval results.
       mlp_log.mlperf_print(
@@ -509,13 +515,13 @@ class TrainAndEvalRunner(object):
 
       mlp_log.mlperf_print(
           "block_stop", None, metadata={"first_epoch_num": epoch + 1})
-      tf.logging.info("Eval results at step %d: %s", cur_step, eval_results)
+      tf.logging.info("Eval results at step %d: %s", self.cur_step, eval_results)
       if 0.0 <= FLAGS.stop_threshold <= eval_results["top_1_accuracy"]:
         success = True
         mlp_log.mlperf_print("run_stop", None, metadata={"status": "success"})
         break
 
-      if enable_tracing and cur_step > self.train_steps // 4:
+      if enable_tracing and self.cur_step > self.train_steps // 4:
         self.launch_profiler()
         enable_tracing = False
 
@@ -527,16 +533,22 @@ class TrainAndEvalRunner(object):
     if output_summaries:
       summary_writer.close()
 
+    self.save()
+
+  def save(self, step=None, sync=True):
+    if step is None:
+      step = self.cur_step
     if FLAGS.export_dir is not None:
       def checkpoint_thread_fn(saver, sess, step):
         name = FLAGS.model_dir + "/model.ckpt-%d" % (step)
         tf.logging.info("Saving model %d: %s", step, name)
         saver.save(sess, name)
       self.checkpoint_thread = threading.Thread(
-        target=checkpoint_thread_fn, args=(self.saver, self.sess, cur_step), daemon=True)
+        target=checkpoint_thread_fn, args=(self.saver, self.sess, step), daemon=True)
       self.checkpoint_thread.start()
-      self.checkpoint_thread.join()
-      self.checkpoint_thread = None
+      if sync:
+        self.checkpoint_thread.join()
+        self.checkpoint_thread = None
 
   def eval(self, num_steps):
     """Run the Eval steps on the TPU device.
