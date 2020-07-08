@@ -118,7 +118,7 @@ class TrainAndEvalRunner(object):
     self.dataset_initializer = []
     self.eval_dataset_initializer = []
     self.iterations = iterations
-    self.steps_per_epoch = FLAGS.num_train_images // FLAGS.train_batch_size
+    self.steps_per_epoch = max(1, FLAGS.num_train_images // FLAGS.train_batch_size)
     self.iterator = None
     self.sess = None
     self.saver = None
