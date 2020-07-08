@@ -210,6 +210,8 @@ class ImageNetTFExampleInput(object):
 
   def pad_dataset(self, dataset, num_hosts):
     """Pad the eval dataset so that eval can have the same batch size as training."""
+    # Actually, just repeat the dataset forever.
+    return dataset.repeat()
     num_dataset_per_shard = int(
         math.ceil(FLAGS.num_eval_images / FLAGS.eval_batch_size) *
         FLAGS.eval_batch_size / num_hosts)
