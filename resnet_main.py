@@ -227,6 +227,10 @@ flags.DEFINE_float(
     help=('Base learning rate when train batch size is 256.'))
 
 flags.DEFINE_float(
+  'const_learning_rate', default=None,
+  help=('Set a constant learning rate throughout the run.'))
+
+flags.DEFINE_float(
     'momentum', default=0.9,
     help=('Momentum parameter used in the MomentumOptimizer.'))
 
@@ -322,6 +326,9 @@ def learning_rate_schedule(current_epoch):
   Returns:
     A scaled `Tensor` for current learning rate.
   """
+  if FLAGS.const_learning_rate is not None:
+    mlp_log.mlperf_log('base_learning_rate', FLAGS.const_learning_rate)
+    return tf.constant(FLAGS.const_learning_rate, dtype=tf.float32)
   mlp_log.mlperf_log('base_learning_rate', FLAGS.base_learning_rate)
   scaled_lr = FLAGS.base_learning_rate * (FLAGS.train_batch_size / 256.0)
 
