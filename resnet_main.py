@@ -296,6 +296,11 @@ flags.DEFINE_boolean(
     default=False,
     help=('When set to true traces collected from worker-0 on every run'))
 
+flags.DEFINE_string(
+  'dataset_prefix',
+  default='',
+  help=('The prefix to prepend before train-* or validation-*'))
+
 # The input tensor is in the range of [0, 255], we need to scale them to the
 # range of [0, 1]
 MEAN_RGB = [0.485 * 255, 0.456 * 255, 0.406 * 255]
