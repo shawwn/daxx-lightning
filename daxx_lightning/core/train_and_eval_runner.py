@@ -510,16 +510,8 @@ class TrainAndEvalRunner(object):
       mlp_log.mlperf_print(
           "block_stop", None, metadata={"first_epoch_num": epoch + 1})
       tf.logging.info("Eval results at step %d: %s", cur_step, eval_results)
-      if eval_results["top_1_accuracy"] >= FLAGS.stop_threshold:
+      if 0.0 <= FLAGS.stop_threshold <= eval_results["top_1_accuracy"]:
         success = True
-        if FLAGS.export_dir is not None:
-          def checkpoint_thread_fn(saver, sess, step):
-            name = FLAGS.model_dir + "/model.ckpt-%d" % (step)
-            tf.logging.info("Saving model %d: %s", step, name)
-            saver.save(sess, name)
-          self.checkpoint_thread = threading.Thread(
-            target=checkpoint_thread_fn, args=(self.saver, self.sess, cur_step), daemon=True)
-          self.checkpoint_thread.start()
         mlp_log.mlperf_print("run_stop", None, metadata={"status": "success"})
         break
 
@@ -534,6 +526,17 @@ class TrainAndEvalRunner(object):
 
     if output_summaries:
       summary_writer.close()
+
+    if FLAGS.export_dir is not None:
+      def checkpoint_thread_fn(saver, sess, step):
+        name = FLAGS.model_dir + "/model.ckpt-%d" % (step)
+        tf.logging.info("Saving model %d: %s", step, name)
+        saver.save(sess, name)
+      self.checkpoint_thread = threading.Thread(
+        target=checkpoint_thread_fn, args=(self.saver, self.sess, cur_step), daemon=True)
+      self.checkpoint_thread.start()
+      self.checkpoint_thread.join()
+      self.checkpoint_thread = None
 
   def eval(self, num_steps):
     """Run the Eval steps on the TPU device.
