@@ -27,6 +27,10 @@ from absl import flags
 import tensorflow as tf
 from . import resnet_preprocessing
 
+flags.DEFINE_integer(
+  'label_bias', default=1,
+  help=('Subtract this many from each label in input dataset'))
+
 FLAGS = flags.FLAGS
 
 
@@ -152,7 +156,7 @@ class ImageNetTFExampleInput(object):
 
     # Subtract one so that labels are in [0, 1000).
     label = tf.cast(
-        tf.reshape(parsed['image/class/label'], shape=[]), dtype=tf.int32) - 1
+        tf.reshape(parsed['image/class/label'], shape=[]), dtype=tf.int32) - FLAGS.label_bias
 
     # Return all black images for padded data.
     image = tf.cond(
