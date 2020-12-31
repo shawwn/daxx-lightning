@@ -307,7 +307,7 @@ def learning_rate_schedule(current_epoch):
     A scaled `Tensor` for current learning rate.
   """
   mlp_log.mlperf_print('base_learning_rate', FLAGS.base_learning_rate)
-  lr_mul = tf.Variable(1.0, name='lr_mul', shape=(), use_resource=True, trainable=False, collections=['local_variables'])
+  lr_mul = tf.Variable(1.5, name='lr_mul', shape=(), use_resource=True, trainable=False, collections=['local_variables'])
   scaled_lr = FLAGS.base_learning_rate * (FLAGS.train_batch_size / 256.0)
   scaled_lr = lr_mul * tf.Variable(scaled_lr, name='lr', shape=(), use_resource=True, trainable=False, collections=['local_variables'])
 
