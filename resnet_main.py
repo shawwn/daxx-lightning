@@ -271,7 +271,8 @@ flags.DEFINE_integer(
 
 # Learning rate schedule
 LR_SCHEDULE = [    # (multiplier, epoch to start) tuples
-    (1.0, 5), (0.1, 30), (0.01, 60), (0.001, 80)
+    #(1.0, 5), (0.1, 30), (0.01, 60), (0.001, 80)
+    (1.0, 0.001), (0.1, 30), (0.01, 60), (0.001, 80)
 ]
 
 flags.DEFINE_boolean(
@@ -306,9 +307,11 @@ def learning_rate_schedule(current_epoch):
     A scaled `Tensor` for current learning rate.
   """
   mlp_log.mlperf_print('base_learning_rate', FLAGS.base_learning_rate)
-  scaled_lr = FLAGS.base_learning_rate * (FLAGS.train_batch_size / 256.0)
+  lr_mul = tf.Variable(1.0, name='lr_mul', shape=(), use_resource=True, trainable=False, collections=['local_variables'])
+  scaled_lr = FLAGS.base_learning_rate * (FLAGS.train_batch_size / 256.0) * 48.0
+  scaled_lr = lr_mul * tf.Variable(scaled_lr, name='lr', shape=(), use_resource=True, trainable=False, collections=['local_variables'])
 
-  decay_rate = (scaled_lr * LR_SCHEDULE[0][0] *
+  decay_rate = (scaled_lr * lr_mul * LR_SCHEDULE[0][0] *
                 current_epoch / LR_SCHEDULE[0][1])
   for mult, start_epoch in LR_SCHEDULE:
     decay_rate = tf.where(current_epoch < start_epoch,
@@ -613,16 +616,18 @@ def main(unused_argv):
     save_checkpoints_steps = max(100, FLAGS.iterations_per_loop)
   mlp_log.mlperf_print('global_batch_size', FLAGS.train_batch_size)
   if not FLAGS.use_train_runner:
+    session_config = tf.ConfigProto(
+            graph_options=tf.GraphOptions(
+                rewrite_options=rewriter_config_pb2.RewriterConfig(
+                    disable_meta_optimizer=True)))
+    session_config.experimental.share_session_state_in_clusterspec_propagation = True
     config = tf.contrib.tpu.RunConfig(
         cluster=tpu_cluster_resolver,
         model_dir=FLAGS.model_dir,
         save_checkpoints_steps=save_checkpoints_steps,
         log_step_count_steps=FLAGS.log_step_count_steps,
         save_summary_steps=0,
-        session_config=tf.ConfigProto(
-            graph_options=tf.GraphOptions(
-                rewrite_options=rewriter_config_pb2.RewriterConfig(
-                    disable_meta_optimizer=True))),
+        session_config=session_config,
         tpu_config=tf.contrib.tpu.TPUConfig(
             iterations_per_loop=FLAGS.iterations_per_loop,
             tpu_job_name=FLAGS.tpu_job_name,

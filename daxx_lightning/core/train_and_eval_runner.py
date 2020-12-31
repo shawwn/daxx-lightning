@@ -368,6 +368,8 @@ class SwarmRunner(object):
             rewrite_options=rewriter_config_pb2.RewriterConfig(
                 disable_meta_optimizer=True)),
         isolate_session_state=True)
+    # share resource variables across sessions
+    self.config.experimental.share_session_state_in_clusterspec_propagation = True
     cluster_spec = self.tpu_cluster_resolver.cluster_spec()
     if cluster_spec:
       self.config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
@@ -757,7 +759,7 @@ class SwarmRunner(object):
       if self.step_loss is not None:
         self.eval_results['loss'] = self.step_loss[0]
       if 'global_step' in self.eval_results:
-        self.eval_results['global_step_sec'] = (self.eval_results['global_step'] - self.cur_step) / self.step_time
+        self.eval_results['global_step_sec'] = self.iterations / self.step_time
       tf.logging.info(
           "TrainAndEvalRunner ({}): step {} step time {} sec {} examples/sec".format(
               self.tpu_name,
