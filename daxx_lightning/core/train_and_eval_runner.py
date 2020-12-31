@@ -248,12 +248,12 @@ class TrainAndEvalRunner(object):
     tpus = FLAGS.tpu or FLAGS.master
     self.tpus = []
     for part in tpus.split(','):
-      name, cores = part.split(':')
+      name, cores = part.rsplit(':', 1)
       cores = int(cores)
       with open('configs/tpu-v3-%d.json' % cores) as f:
         config = json.load(f)
       self.tpus.append([name, cores, config])
-    self.shards = dispatch(self.tpus, lambda i: SwarmRunner(self, i, *self.tpus[i], *args, **kws))
+    self.shards = dispatch_sync(self.tpus, lambda i: SwarmRunner(self, i, *self.tpus[i], *args, **kws))
     for i, shard in enumerate(self.shards):
       tf.logging.info("Checking shard %d", i)
       assert shard is not None
@@ -268,18 +268,23 @@ class TrainAndEvalRunner(object):
       params:  Parameters to input and model functions
     """
     tf.logging.info("TrainAndEvalRunner: initialize()...")
-    dispatch(self.tpus, lambda i: self.shards[i].initialize(train_input_fn, eval_input_fn, model_fn, params, logger_fn))
+    dispatch_sync(self.tpus, lambda i: self.shards[i].initialize(train_input_fn, eval_input_fn, model_fn, params, logger_fn))
 
   def train_and_eval(self, output_summaries=False, enable_tracing=True):
     """Run the Train steps on the TPU device."""
     tf.logging.info("TrainAndEvalRunner: train_and_eval()...")
-    threads = tflex.parallelize(list(range(len(self.tpus))),
-                                lambda i: self.shards[i].train_and_eval(
-                                  output_summaries=output_summaries,
-                                  enable_tracing=enable_tracing))
+    if True:
+      for i in tqdm.trange(len(self.tpus)):
+        self.shards[i].train_and_eval(output_summaries=output_summaries, enable_tracing=enable_tracing)
+      return
+    else:
+      threads = tflex.parallelize(list(range(len(self.tpus))),
+                                  lambda i: self.shards[i].train_and_eval(
+                                    output_summaries=output_summaries,
+                                    enable_tracing=enable_tracing))
     for i, thread in enumerate(threads):
       self.shards[i].thread = thread
-    while True:
+    while tflex.check_commands():
       time.sleep(1.0)
       trainers = [x for x in self.shards if x.thread.is_alive()]
       if len(trainers) <= 0:
@@ -290,7 +295,7 @@ class TrainAndEvalRunner(object):
 
   def shutdown(self):
     tf.logging.info("TrainAndEvalRunner: shutdown()...")
-    dispatch(self.tpus, lambda i: self.shards[i].shutdown())
+    dispatch_sync(self.tpus, lambda i: self.shards[i].shutdown())
 
   def claim(self, n):
     with self._lock:
@@ -335,6 +340,7 @@ class SwarmRunner(object):
     self.log_sess = None
     self.infeed_thread = None
     self.train_eval_thread = None
+    self.flush_summaries_thread = None
     self.graph = tf.Graph()
     self.init_graph = tf.Graph()
     self.input_graph = tf.Graph()
@@ -344,7 +350,8 @@ class SwarmRunner(object):
     if train_steps % iterations != 0:
       train_steps = iterations * int(math.ceil(train_steps / iterations))
     self.train_steps = train_steps
-    self.max_train_iterations = self.train_steps // iterations
+    #self.max_train_iterations = self.train_steps // iterations # TKTK
+    self.max_train_iterations = 1
     self.eval_steps = int(eval_steps)
     self.eval_batch_size = self.cfg['eval_batch_size']
     with self.init_graph.as_default():
@@ -365,8 +372,10 @@ class SwarmRunner(object):
     if cluster_spec:
       self.config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
     self.master = self.tpu_cluster_resolver.get_master()
+    tf.logging.info("Initializing TPU...")
     self.init_sess = tflex.Session(self.master, config=self.config, graph=self.init_graph)
     self.init_sess.run(tpu_init)
+    tf.logging.info("Initializing TPU... (done)")
 
   def get_host(self, host_id):
     if self.master in ("", "local"):
@@ -395,7 +404,7 @@ class SwarmRunner(object):
     def get_enqueue_ops_fn():
       """Generate the enqueue ops graph function."""
 
-      iparams["dataset_index"] = num_shards * index + host_id
+      iparams["dataset_index"] = self.num_hosts * index + host_id
       with tf.device(device_for_host(self.get_host(host_id))):
         dataset = input_fn(iparams)
         if not is_training:
@@ -573,15 +582,16 @@ class SwarmRunner(object):
       self.train_vars = tf.trainable_variables()
       self.fetch_vars = list(tflex.split_by_params(self.train_vars))
       self.saver = tf.train.Saver()
-      n = len(self.fetch_vars)
-      with tqdm.tqdm(total=n) as pbar:
-        def thunk(i):
-          variables = self.variables(i)
-          values = self.sess.run(variables)
-          tflex.assign_values(variables, values, session=self.sess)
-        for thread in tflex.parallelize(list(range(n)), thunk):
-          thread.join()
-          pbar.update(1)
+      if False: # precompiled assignment
+        n = len(self.fetch_vars)
+        with tqdm.tqdm(total=n) as pbar:
+          def thunk(i):
+            variables = self.variables(i)
+            values = self.sess.run(variables)
+            tflex.assign_values(variables, values, session=self.sess)
+          for thread in tflex.parallelize(list(range(n)), thunk):
+            thread.join()
+            pbar.update(1)
 
     with self.log_graph.as_default():
       self.log_sess.run(self.log_initializer)
@@ -591,13 +601,14 @@ class SwarmRunner(object):
       sess.run([train_eval_op])
 
     # Start the just in time compilation of the model function
-    tf.logging.info("Starting JIT compilation (sleeping for 60 sec)...")
     self.train_eval_thread = threading.Thread(
         target=train_eval_thread_fn, args=(self.sess, self.train_eval_op))
     self.train_eval_thread.start()
 
-    # Sleep for JTC to finish
-    time.sleep(60.0)
+    if False:
+      # Sleep for JTC to finish
+      tf.logging.info("Starting JIT compilation (sleeping for 60 sec)...")
+      time.sleep(60.0)
 
   def initialize_eval(self, params, eval_input_fn, model_fn):
     """Initialize eval."""
@@ -700,8 +711,9 @@ class SwarmRunner(object):
         self.input_sess.run([self.enqueue_ops])
         self.eval_input_sess.run([self.eval_enqueue_ops])
 
-    self.infeed_thread = threading.Thread(target=infeed_thread_fn)
-    self.infeed_thread.start()
+    if False:
+      self.infeed_thread = threading.Thread(target=infeed_thread_fn)
+      self.infeed_thread.start()
 
     # Gather trace for the first few steps.
     if enable_tracing:
@@ -709,43 +721,81 @@ class SwarmRunner(object):
 
     self.cur_step = 0
     success = False
+    def enq(self, run=True):
+      if self.infeed_thread is None:
+        tf.logging.info("TrainAndEvalRunner: input_sess enqueue")
+        self.input_sess.run([self.enqueue_ops])
+        self.eval_input_sess.run([self.eval_enqueue_ops])
+        tf.logging.info("TrainAndEvalRunner: enqueue (done)")
+        if run:
+          tf.logging.info("TrainAndEvalRunner: train_eval_op...")
+          result = self.sess.run([self.train_eval_op])
+          tf.logging.info("TrainAndEvalRunner: train_eval_op... (done)")
+          return result
+    # take care of the first JIT
+    enq(self, run=False)
     while self.cur_step < self.train_steps or True:
-      start = time.time()
+      tflex.check_commands()
+      if tflex.should_quit():
+        import pdb; pdb.set_trace()
+        break
+      self.start = time.time()
       tf.logging.info("TrainAndEvalRunner: start next %d steps",
                       self.iterations)
       self.cur_step = self.coordinator.claim(self.iterations)
       self.sess.run(self.global_step_init, {self.global_step_in: self.cur_step})
       epoch = self.cur_step // self.steps_per_epoch - 1
-      mlp_log.mlperf_print(
-          "block_start", None, metadata={"first_epoch_num": epoch + 1,
+      mlp_log.mlperf_print("block_start", None, metadata={"first_epoch_num": epoch + 1,
                                          "epoch_count": 4})
-      eval_results = self.eval(self.eval_steps)
-      end = time.time()
+      self.step_loss = enq(self)
+      self.eval_results = self.eval(self.eval_steps)
+      self.end = time.time()
+      self.step_time = self.end - self.start
+      self.examples_sec = self.iterations * self.cfg['train_batch_size'] / self.step_time
+      self.eval_results['examples_sec'] = self.examples_sec
+      self.eval_results['step_time'] = self.step_time
+      if self.step_loss is not None:
+        self.eval_results['loss'] = self.step_loss[0]
+      if 'global_step' in self.eval_results:
+        self.eval_results['global_step_sec'] = (self.eval_results['global_step'] - self.cur_step) / self.step_time
       tf.logging.info(
           "TrainAndEvalRunner ({}): step {} step time {} sec {} examples/sec".format(
               self.tpu_name,
-              self.cur_step, end - start,
-              self.iterations * self.cfg['train_batch_size'] / (end - start)))
+              self.cur_step,
+              self.step_time,
+              self.examples_sec))
       # Run eval.
       # Write out summary to tensorboard.
       if output_summaries:
         with tf.Graph().as_default():
           summaries = []
-          for metric in eval_results:
+          for metric in self.eval_results:
             summaries.append(
-                tf.Summary.Value(tag=metric, simple_value=eval_results[metric]))
+                tf.Summary.Value(tag=metric, simple_value=self.eval_results[metric]))
             tf_summary = tf.Summary(value=list(summaries))
             summary_writer.add_summary(tf_summary, self.cur_step)
+        def flush(i):
+          tf.logging.info("Flushing summaries...")
+          start = time.time()
+          summary_writer.flush()
+          end = time.time()
+          tf.logging.info("Flushing summaries (done in %.2fs)", (end - start))
+        if self.flush_summaries_thread is not None and self.flush_summaries_thread.is_alive():
+          start = time.time()
+          self.flush_summaries_thread.join()
+          end = time.time()
+          tf.logging.info("Flushing summaries [BLOCKED] (done in %.2fs)", (end - start))
+        self.flush_summaries_thread = dispatch([0], flush)[0]
       # MLPerf logging for eval results.
       mlp_log.mlperf_print(
           "eval_accuracy",
-          float(eval_results["top_1_accuracy"]),
+          float(self.eval_results["top_1_accuracy"]),
           metadata={"epoch_num": epoch + 1})
 
       mlp_log.mlperf_print(
           "block_stop", None, metadata={"first_epoch_num": epoch + 1})
-      tf.logging.info("Eval results at step %d: %s", self.cur_step, eval_results)
-      if eval_results["top_1_accuracy"] >= FLAGS.stop_threshold:
+      tf.logging.info("Eval results at step %d: %s", self.cur_step, self.eval_results)
+      if self.eval_results["top_1_accuracy"] >= FLAGS.stop_threshold:
         success = True
         if FLAGS.export_dir is not None:
           def checkpoint_thread_fn(tpu_name, saver, sess, step):
@@ -756,6 +806,7 @@ class SwarmRunner(object):
             target=checkpoint_thread_fn, args=(self.tpu_name, self.saver, self.sess, self.cur_step))
           self.checkpoint_thread.start()
         mlp_log.mlperf_print("run_stop", None, metadata={"status": "success"})
+        import pdb; pdb.set_trace()
         break
 
       if enable_tracing and self.cur_step > self.train_steps // 4:
@@ -813,13 +864,16 @@ class SwarmRunner(object):
 
   def shutdown(self):
     self.queue.put(_STOP)
-    self.train_eval_thread.join()
-    self.infeed_thread.join()
+    if self.train_eval_thread is not None:
+      self.train_eval_thread.join()
+    if self.infeed_thread is not None:
+      self.infeed_thread.join()
     if self.checkpoint_thread is not None:
       self.checkpoint_thread.join()
-    self.sess.close()
-    tf.logging.info("Shutting down TPU...")
-    self.init_sess.run(self.tpu_shutdown)
+    if self.sess is not None:
+      self.sess.close()
+    tf.logging.info("Shutting down TPU... (skipped)")
+    # self.init_sess.run(self.tpu_shutdown)
 
   def variables(self, index):
     return tflex.trainer_variables(self, index)

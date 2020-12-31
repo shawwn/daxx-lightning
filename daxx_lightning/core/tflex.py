@@ -531,7 +531,7 @@ def grab_values(variables, reader, reshape=False):
     yield variable, value
 
 
-def assign_values(variables, values, session=None, timeout_in_ms=600000):
+def assign_values(variables, values, session=None, timeout_in_ms=1200000):
   session = session or get_default_session()
   variables = [x for x in variables]
   values = [x for x in values]

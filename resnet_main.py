@@ -697,6 +697,7 @@ def main(unused_argv):
         'current_epoch': current_epoch,
         'steps_per_epoch': steps_per_epoch,
         'momentum': FLAGS.momentum,
+        'global_step': global_step,
         **log
       }
     low_level_runner.initialize(imagenet_train.input_fn, imagenet_eval.input_fn,

@@ -1,4 +1,4 @@
-source "${HOME}/bin/activate-tf1"
+#source "${HOME}/bin/activate-tf1"
 set -ex
 i="$1"
 shift 1
@@ -11,15 +11,15 @@ i=`printf '%04d' $i`
 #TPU_INDEX="${TPU_INDEX:-68}"
 #tpu="${TPU_NAME:-tpu-v3-${TPU_CORES}-euw4a-${TPU_INDEX}}"
 
-TPU_CORES="${TPU_CORES:-1024}"
+TPU_CORES="${TPU_CORES:-8}"
 TPU_INDEX="${TPU_INDEX:-0}"
 tpu="${TPU_NAME:-tpu-v3-${TPU_CORES}-euw4a-${TPU_INDEX}}"
 
-run_name="${RUN_NAME:-imagenet}"
+run_name="${RUN_NAME:-2020dec31_imagenet_0}"
 
-data_dir="gs://danbooru-euw4a/imagenet/out"
-model_dir="gs://danbooru-euw4a/benchmarks/daxx/${run_name}/tf-1-15/v3-${TPU_CORES}/results-${i}"
-export_dir="gs://danbooru-euw4a/benchmarks/daxx/${run_name}/tf-1-15/v3-${TPU_CORES}/results-${i}"
+data_dir="gs://mldata-euw4/datasets/imagenet"
+model_dir="gs://ml-euw4/benchmarks/daxx/${run_name}/tf-1-15/v3-${TPU_CORES}/results-${i}"
+export_dir="gs://ml-euw4/benchmarks/daxx/${run_name}/tf-1-15/v3-${TPU_CORES}/results-${i}"
 save_graphs=True
 
 export NOISY=1
@@ -106,10 +106,12 @@ export DEBUG=1
 #"$@"
 #
 
-exec python3 resnet_main.py --data_dir="$data_dir" \
+#enable_lars=True
+enable_lars=False
+exec python3pdb resnet_main.py --data_dir="$data_dir" \
 --output_summaries=True \
 --distributed_group_size=1 \
---enable_lars=True \
+--enable_lars=$enable_lars \
 --eval_batch_size=16384 \
 --iterations_per_loop=313 \
 --label_smoothing=0.1 \
