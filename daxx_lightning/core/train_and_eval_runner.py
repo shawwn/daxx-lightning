@@ -734,6 +734,17 @@ class SwarmRunner(object):
           result = self.sess.run([self.train_eval_op])
           tf.logging.info("TrainAndEvalRunner: train_eval_op... (done)")
           return result
+    def checkpoint_thread_fn(tpu_name, saver, sess, step):
+      name = ''.join(['_' if not c.isalnum() else c for c in tpu_name])
+      if FLAGS.export_dir is None:
+        tf.logging.info("Not model %d: %s (FLAGS.export_dir is unset)", step, name)
+      else:
+        name = FLAGS.export_dir + "/model-%s.ckpt-%d" % (name, step)
+        tf.logging.info("Saving model %d: %s", step, name)
+        saver.save(sess, name)
+    @tflex.register_command
+    def save():
+      checkpoint_thread_fn(self.tpu_name, self.saver, self.sess, self.cur_step)
     # take care of the first JIT
     enq(self, run=False)
     while self.cur_step < self.train_steps or True:
@@ -800,12 +811,7 @@ class SwarmRunner(object):
       if self.eval_results["top_1_accuracy"] >= FLAGS.stop_threshold:
         success = True
         if FLAGS.export_dir is not None:
-          def checkpoint_thread_fn(tpu_name, saver, sess, step):
-            name = FLAGS.export_dir + "/model-%s.ckpt-%d" % (tpu_name, step)
-            tf.logging.info("Saving model %d: %s", step, name)
-            saver.save(sess, name)
-          self.checkpoint_thread = threading.Thread(
-            target=checkpoint_thread_fn, args=(self.tpu_name, self.saver, self.sess, self.cur_step))
+          self.checkpoint_thread = threading.Thread(target=checkpoint_thread_fn, args=(self.tpu_name, self.saver, self.sess, self.cur_step))
           self.checkpoint_thread.start()
         mlp_log.mlperf_print("run_stop", None, metadata={"status": "success"})
         import pdb; pdb.set_trace()
